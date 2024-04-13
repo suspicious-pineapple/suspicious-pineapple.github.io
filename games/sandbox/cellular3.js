@@ -340,7 +340,7 @@ waterType.density = 1;
 waterType.moveable = true;
 waterType.state = "liquid";
 
-let particleTypes = {0: emptyType, 1: sandType, 2: waterType, 3: wallType};
+let particleTypes = [emptyType, sandType, waterType, wallType];
 
 
 
@@ -348,16 +348,17 @@ let particleTypes = {0: emptyType, 1: sandType, 2: waterType, 3: wallType};
 
 
 let gpu = new GPUJS({mode: 'webgl2'});
-let renderKernel = gpu.createKernel(function(collisionData){
+let renderKernel = gpu.createKernel(function(collisionData, typeColors){
 //get id from 2d collision map
 let type = collisionData[this.thread.x][this.thread.y];
 
 function typeToColor(type){
 let color = [0,0,0];
-if(type==0) color = [0,0,0];
-if(type==1) color = [190,170,0];
-if(type==2) color = [10,15,255];
-if(type==3) color = [68,121,89];
+    //use constants to get the color
+    color[0] = typeColors[type*3];
+    color[1] = typeColors[type*3+1];
+    color[2] = typeColors[type*3+2];
+
 return color;
 }
 
@@ -411,6 +412,19 @@ this.color(color[0]/255,color[1]/255,color[2]/255);
 }).setOutput([800,800]).setGraphical(true);
 
 
+//setConstants for the types and colors
+let typeColors = new Array(particleTypes.length*3);
+for(let i = 0; i < particleTypes.length; i++){
+    let type = particleTypes[i];
+    let color = type.rgbColor;
+    typeColors[i*3] = color[0];
+    typeColors[i*3+1] = color[1];
+    typeColors[i*3+2] = color[2];
+}
+//console.log(typeColors);
+//renderKernel.setConstants({typeColors:typeColors});
+
+
 
 //appends the canvas to the body
 function renderGPU(particlesim){
@@ -430,8 +444,7 @@ function renderGPU(particlesim){
         }
     }
 
-
-    renderKernel(cmap);
+    renderKernel(cmap, typeColors);
     //print that onto gamectx
     let canvas = renderKernel.canvas;
     gamectx.drawImage(canvas,0,0);
