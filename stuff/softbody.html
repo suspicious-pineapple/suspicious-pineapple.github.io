@@ -1,0 +1,246 @@
+<html>
+    <head>
+        
+    </head>
+
+    <body>
+        <canvas id="canvas" width="800" height="600"></canvas>
+
+
+        <script>
+            class Point {
+                constructor(x, y,mass, spacing) {
+                    this.gridx = x;
+                    this.gridy = y;
+                    this.x = x * spacing;
+                    this.y = y * spacing;
+                    this.vx = 0;
+                    this.vy = 0;
+                    this.mass = mass;
+                }
+                getNeighbors(grid, width, height) {
+                    let neighbors = [];
+                    for (let i = -1; i <= 1; i++) {
+                        for (let j = -1; j <= 1; j++) {
+                            if (i == 0 && j == 0) {
+                                continue;
+                            }
+                            let x = this.gridx + i;
+                            let y = this.gridy + j;
+                            if (x >= 0 && x < width && y >= 0 && y < height) {
+                                neighbors.push(grid[x][y]);
+                            }
+                        }
+                    }
+                    return neighbors;
+                }
+            }
+
+            class Softbody {
+                constructor(x,y,width,height,spacing,density) {
+                    this.x = x;
+                    this.y = y;
+                    this.width = width;
+                    this.height = height;
+                    this.spacing = spacing;
+                    this.density = density;
+                    this.grid = [];
+                    this.createGrid();
+                    this.springForce = 0.16;
+
+                }
+                createGrid(){
+                    for (let i = 0; i < this.width; i++) {
+                        this.grid[i] = [];
+                        for (let j = 0; j < this.height; j++) {
+                            this.grid[i][j] = new Point(i, j, (this.density / (this.width * this.height)), this.spacing);
+                        }
+                    }
+                }
+                update(delta){
+                    let center = this.grid[Math.floor(this.width/2)][Math.floor(this.height/2)];
+                    //fix center to x, y + width/2*spacing, height/2*spacing
+
+                    for (let i = 0; i < this.width; i++) {
+                        for (let j = 0; j < this.height; j++) {
+                            let point = this.grid[i][j];
+                            let neighbors = point.getNeighbors(this.grid, this.width, this.height);
+                            for (let neighbor of neighbors) {
+                                let dx = neighbor.x - point.x;
+                                let dy = neighbor.y - point.y;
+
+                                let attrX = (dx - Math.sign(dx)*this.spacing) * this.springForce;
+                                let attrY = (dy - Math.sign(dy)*this.spacing) * this.springForce;
+
+                                let fx = attrX;
+                                let fy = attrY;
+
+                                point.vx += fx / point.mass * delta;
+                                point.vy += fy / point.mass * delta;
+
+                                neighbor.vx -= fx / neighbor.mass * delta;
+                                neighbor.vy -= fy / neighbor.mass * delta;
+                                
+                                //if velocity is too high, change position directly and reduce velocity
+                                if(Math.abs(point.vx) > 10){
+                                    point.x += point.vx * delta;
+                                    point.vx = point.vx * 0.3;
+                                }
+                                if(Math.abs(point.vy) > 10){
+                                    point.y += point.vy * delta;
+                                    point.vy = point.vy * 0.3;
+                                }
+
+
+                                //weak repulsion from center
+                                let centerdx = center.x - point.x;
+                                let centerdy = center.y - point.y;
+                                let centerDist = Math.sqrt(centerdx * centerdx + centerdy * centerdy);
+                                if(centerDist < 100){
+                                    let repelX = centerdx * -0.01;
+                                    let repelY = centerdy * -0.01;
+                                    point.vx += repelX / point.mass * delta;
+                                    point.vy += repelY / point.mass * delta;
+                                }
+
+                            }
+                        }
+                    }
+                    //repel the 4 corners more from the center
+                    let corners = [this.grid[0][0],this.grid[this.width-1][0],this.grid[0][this.height-1],this.grid[this.width-1][this.height-1]];
+                    for(let corner of corners){
+                        let centerdx = center.x - corner.x;
+                        let centerdy = center.y - corner.y;
+                        let centerDist = Math.sqrt(centerdx * centerdx + centerdy * centerdy);
+                        if(centerDist < 100){
+                            let repelX = centerdx * -0.01;
+                            let repelY = centerdy * -0.01;
+                            corner.vx += repelX / corner.mass * delta;
+                            corner.vy += repelY / corner.mass * delta;
+                        }
+                    }
+                    //update pos
+                    
+                    for (let i = 0; i < this.width; i++) {
+                        for (let j = 0; j < this.height; j++) {
+                            let point = this.grid[i][j];
+
+                            point.vx = point.vx * 0.993;
+                            point.vy = point.vy * 0.993;
+
+                            point.x += point.vx * delta;
+                            point.y += point.vy * delta;
+                        }
+                    }
+
+                }
+                draw(ctx){
+                    ctx.fillStyle = "black";
+                    for (let i = 0; i < this.width; i++) {
+                        for (let j = 0; j < this.height; j++) {
+                            let point = this.grid[i][j];
+                            ctx.beginPath();
+                            ctx.arc(this.x+point.x, this.y+point.y, 2, 0, 2 * Math.PI);
+                            ctx.fill();
+                        }
+                    }
+                    //paint the area between the points with low alpha red
+                    ctx.fillStyle = "rgba(255,0,0,0.1)";
+                    for (let i = 0; i < this.width; i++) {
+                        for (let j = 0; j < this.height; j++) {
+                            let point = this.grid[i][j];
+                            let neighbors = point.getNeighbors(this.grid, this.width, this.height);
+                            for (let neighbor of neighbors) {
+                                ctx.beginPath();
+                                ctx.moveTo(this.x+point.x, this.y+point.y);
+                                ctx.lineTo(this.x+neighbor.x, this.y+neighbor.y);
+                                ctx.stroke();
+                            }
+                        }
+                    }
+
+
+
+                }
+                cursorGrab(x,y){
+                    //find point closest to cursor
+                    //set that point's velocity to 0 and set it's position to the cursor
+                    let closestPoint = null;
+                    let closestDist = 0;
+                    for (let i = 0; i < this.width; i++) {
+                        for (let j = 0; j < this.height; j++) {
+                            let point = this.grid[i][j];
+                            let dx = x - point.x - this.x;
+                            let dy = y - point.y - this.y;
+                            let dist = Math.sqrt(dx * dx + dy * dy);
+                            if (closestPoint == null || dist < closestDist) {
+                                closestPoint = point;
+                                closestDist = dist;
+                            }
+                        }
+                    }
+                    //if closest point is too far away, don't grab it
+                    if(closestDist > 50){
+                        return;
+                    }
+                    closestPoint.vx = 0;
+                    closestPoint.vy = 0;
+                    closestPoint.x = x - this.x;
+                    closestPoint.y = y - this.y;
+
+
+                }
+
+
+            }
+
+            let canvas = document.getElementById("canvas");
+            let ctx = canvas.getContext("2d");
+            //fullsize canvas
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            let softbody = new Softbody(100,100,10,10,20,400);
+
+            let lastTime = Date.now();
+            function update(time) {
+                let delta = time - lastTime;
+                lastTime = time;
+                delta = 0.3;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                softbody.update(delta);
+                softbody.draw(ctx);
+                if(mouseDown){
+                    softbody.cursorGrab(mouseX,mouseY);
+                }
+                requestAnimationFrame(update);
+            }
+            requestAnimationFrame(update);
+
+            let mouseDown = false;
+            //on mouse down
+            canvas.addEventListener("mousedown", function (e) {
+                mouseDown = true;
+                softbody.cursorGrab(e.offsetX, e.offsetY);
+            });
+            //on mouse up
+            canvas.addEventListener("mouseup", function (e) {
+                mouseDown = false;
+            });
+            let mouseX = 0;
+            let mouseY = 0;
+
+            //on mouse drag
+            canvas.addEventListener("mousemove", function (e) {
+                mouseX = e.offsetX;
+                mouseY = e.offsetY;
+            });
+
+
+
+
+
+        </script>
+    </body>
+
+</html>

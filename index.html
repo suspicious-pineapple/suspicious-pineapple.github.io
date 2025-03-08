@@ -19,39 +19,42 @@
                 <a href="stuff/gravity_sim.html">gravity thing</a>
             </li>
             <li>
-                <a href="stuff/turtles.html">amogus simulator</a>
+                <a href="stuff/turtles/turtles.html">amogus simulator</a>
             </li>
             <li>
-                <a href="stuff/cursor.html">mm bubbles</a>
+                <a href="stuff/circles.html">mm bubbles</a>
             </li>
             <li>
-                <a href="games/engine/test.html">game engine test</a>
+                <a href="games/engine/test.html">truly broken physics engine</a>
             </li>
             <li>
-                <a href="stuff/procedural_stuff/gpunoise.html">epilepsy</a>
+                <a href="stuff/procedural_stuff/gpunoise.html">fancy noise</a>
             </li>
             <li>
-                <a href="stuff/procedural_stuff/mandelbrot.html">mandelbrot</a>
+                <a href="stuff/procedural_stuff/mandelbrot.html">mandelbrot zoom</a>
             </li>
             <li>
-                <a href="stuff/procedural_stuff/tree.html">tree</a>
+                <a href="games/plane_sim/index.html">airplane game</a>
             <li>
                 <a href="stuff/procedural_stuff/gpu_cgol.html">cgol</a>
             </li>
             <li>
                 <a href="games/snails/snailbounce.html">Snails!</a>
             </li>
+            <li>
+                <a href="stuff/fish/genetic_fish.html">genetic algorithm fishies</a>
+            </li>
+            <li>
+                <a href="stuff/softbody.html">a jellyfish</a>
+            </li>
+
             </ul>
 
         </div>
 
-        <canvas id="canvas" class="genericCanvas" width="530px" height="530px"></canvas>
         
         
-        <div style="position: absolute; top:6px; left:6px; margin: 10px;">
-        <input type="button" id="join" value="rename">
-        <input type="text" id="name" value="unnamed amogus">
-        </div> 
+
 
 <script type="importmap">
 {
@@ -88,150 +91,7 @@
 
     </script>
     <script>
-    
-    const getUrl = async () => {
-        const response = await fetch('https://raw.githubusercontent.com/end-me-please/cursor-gaming/main/ngrok.url');
-        const text = await response.text();
-        return text;
-    }
-    //no async and no fetch
-
-    function getUrlSync(){
-        let source = "https://raw.githubusercontent.com/end-me-please/cursor-gaming/main/ngrok.url";
-        let xhr = new XMLHttpRequest();
-        xhr.open('GET', source, false);
-        xhr.send(null);
-        console.log(xhr.responseText);
-        return xhr.responseText;
-    }
-
-    //check if localstorage has a name, if so, put it in the input field
-    if(localStorage.getItem("name")){
-        document.getElementById("name").value = localStorage.getItem("name");
-    }
-
-
-
-    let gameActive = false;
-    let cursors = [];
-    let socket = {};
-    setTimeout(()=>{
-    socket = io.connect("https://"+getUrlSync()+"/")
-    
-    socket.on('connect', function() {
-                console.log('connected');
-                gameActive = true;
-                socket.emit('join', {
-                    name: document.getElementById('name').value
-                });
-            });
-
-    socket.on("data", data=>cursors=data);
-    socket.on("disconnect", ()=>gameActive=false);
-
-    },1000);
-    
-    
-
-    var canvas = document.getElementById('canvas');
-    var ctx = canvas.getContext('2d');
-
-    //move canvas to background
-    canvas.style.position = "absolute";
-    canvas.style.top = "0px";
-    canvas.style.left = "0px";
-    canvas.style.zIndex = "-1";
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
-
-
-
-    class position{
-        constructor(x,y){
-            this.x = x;
-            this.y = y;
-        }
-    }
-
-    
-    //on aniamtion frame
-    let lastTime = Date.now();
-            function frame(time){
-                window.requestAnimationFrame(frame);
-                let delta = time - lastTime;
-                lastTime = time;
-
-                if(gameActive){
-                    //clear canvas
-                    ctx.clearRect(0,0,canvas.width,canvas.height);
-                    //draw cursor
-                    for(let i = 0; i < cursors.length; i++){
-                        let drawX = cursors[i].x*canvas.width/100;
-                        let drawY = cursors[i].y*canvas.height/100;
-
-                        ctx.beginPath();
-                        ctx.arc(drawX, drawY, 4, 0, Math.PI*2);
-                        ctx.fillStyle = '#0095DD';
-                        ctx.fill();
-                        ctx.closePath();
-                        ctx.font = "13px Arial";
-                        //black text
-                        ctx.fillStyle = "#000000";
-                        ctx.fillText(cursors[i].name, drawX, drawY);   
-                    }
-                }
-            };
-    frame(1);
-    
-
-    let clientX = 0;
-            let clientClick = false;
-            let clientY = 0;
-            //on mouse move
-            document.addEventListener('mousemove', function(e){
-                //clientx and clienty as relative positions in %
-                let adjustedX = e.clientX / window.innerWidth;
-                let adjustedY = e.clientY / window.innerHeight;
-                clientX = adjustedX*100;
-                clientY = adjustedY*100;
-            });
-
-            //on mouse click
-            canvas.addEventListener('mousedown', function(e){
-                clientClick = true;
-            } );
-            canvas.addEventListener('mouseup', function(e){
-                clientClick = false;
-            } );
-
-            function sendData(){
-                //if(gameActive&&clientClick){
-                if(gameActive){
-                    socket.emit('mouse', {
-                        x: clientX,
-                        y: clientY,
-                        click: clientClick,
-                    });
-                }
-            }
-            setInterval(sendData, 1000/20);
-
-            //on button click
-            document.getElementById('join').addEventListener('click', function(){
-                socket.emit('join', {
-                    name: document.getElementById('name').value,
-                });
-                //store name in local storage
-                localStorage.setItem('name', document.getElementById('name').value);
-            } );
-
-
-            //prevent scrolling
-            window.addEventListener('touchmove', function(e) {
-                e.preventDefault();
-            }, { passive: false });
-            //hide scrollbars
-            document.body.style.overflow = 'hidden';
+  
 
     
 

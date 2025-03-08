@@ -1,0 +1,805 @@
+<html>
+    <head>
+        <script src="./heightmap.js"></script>
+        <script src="https://cdn.babylonjs.com/babylon.js"></script>
+        <script src="https://cdn.babylonjs.com/loaders/babylon.objFileLoader.js"></script>
+        <script src="https://cdn.babylonjs.com/gui/babylon.gui.js"></script>
+        <script src="./gpu-browser.js"></script>
+    </head>
+    
+    <body>
+
+        <canvas id="noisemapTest" width="512" height="512"></canvas>
+
+
+
+
+
+
+
+
+    </body>
+    <script>
+        let pressedKeys = {};
+        const chunkSize = 54;
+        const renderDistance = 9;
+        const mapScale = 1;
+
+
+        document.addEventListener('keydown', function(event){
+            if(!event.key.startsWith('F')) event.preventDefault()
+            else return;
+            
+            pressedKeys[event.key] = true;
+            //if not a "function" key, prevent default action
+        });
+        document.addEventListener('keyup', function(event){
+            if(!event.key.startsWith('F')) event.preventDefault()
+            else return;
+            pressedKeys[event.key] = false;
+        });
+
+
+        let canvas = document.getElementById("noisemapTest");
+        //full screen canvas
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let map = new Terrain(0.4);
+        let engine = new BABYLON.Engine(canvas, true, {preserveDrawingBuffer: true, stencil: true});
+        
+        function setupScene() {
+            
+            let scene = new BABYLON.Scene(engine);
+            let camera = new BABYLON.UniversalCamera('camera1', new BABYLON.Vector3(500, 5, 500), scene);
+            camera.minZ = 0.1;
+            scene.metadata = {};
+            //scene.debugLayer.show();
+
+            //add instrumentation- angle of attack, speed, etc
+            let advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+            let text1 = new BABYLON.GUI.TextBlock();
+            text1.text = "Angle of Attack: 0";
+            text1.color = "white";
+            text1.fontSize = 14;
+            text1.textHorizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+            text1.textVerticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+            advancedTexture.addControl(text1);
+            scene.metadata.hud = text1;
+            //alpha
+            text1.alpha = 0.5;
+
+
+            //top right: low alpha text with controls
+            let text2 = new BABYLON.GUI.TextBlock();
+            text2.text = "Controls:\nWASD: Pitch, Yaw\nQE: Roll\nSpace: Accelerate\nB: Brake\nX: Switch between player/AI view\n Angle of Attack above 15° will cause stall";
+            text2.color = "white";
+            text2.fontSize = 14;
+            text2.textHorizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+            text2.textVerticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+            text2.alpha = 0.5;
+            advancedTexture.addControl(text2);
+            
+            //performance gui element stored in scene.metadata.performance
+            //text element
+            let text3 = new BABYLON.GUI.TextBlock();
+            text3.text = "Performance: 0";
+            text3.color = "white";
+            text3.fontSize = 14;
+            text3.textHorizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+            text3.textVerticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+            advancedTexture.addControl(text3);
+            scene.metadata.performance = text3;
+            //alpha
+            text3.alpha = 0.5;
+
+
+
+            //directional light
+            let light = new BABYLON.DirectionalLight("dir01", new BABYLON.Vector3(0.3, -0.45, -1), scene);
+            light.intensity = 1;
+            //hemispheric light
+            let light2 = new BABYLON.HemisphericLight("HemiLight", new BABYLON.Vector3(0, 1, 0), scene);
+            light2.intensity = 0.6;
+
+            //scene color to black
+            scene.clearColor = new BABYLON.Color3(0, 0, 0);
+
+
+            //only init these materials once
+            let groundMaterial = new BABYLON.StandardMaterial("groundMaterialWireframe", scene);
+            groundMaterial.wireframe = true;
+            groundMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
+            groundMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+            groundMaterial.alpha = 0.5;
+            //backface culling
+            groundMaterial.backFaceCulling = true;
+            let groundMaterial2 = new BABYLON.StandardMaterial("groundMaterialBlack", scene);
+            groundMaterial2.wireframe = false;
+            groundMaterial2.diffuseColor = new BABYLON.Color3(0, 0, 0);
+            groundMaterial2.specularColor = new BABYLON.Color3(0, 0, 0);
+            groundMaterial2.alpha = 1;
+
+            
+            scene.metadata.materials = {
+                groundMaterialWireframe: groundMaterial,
+                groundMaterialBlack: groundMaterial2,
+            }
+
+
+            
+            scene.metadata.ships = [];
+
+            //use objfileloader to load ship1.obj
+            BABYLON.SceneLoader.ImportMesh("", "./", "ship1.obj", scene, function(newMeshes){
+                //material
+                newMeshes[0].material = new BABYLON.StandardMaterial("shipMaterial", scene);
+                newMeshes[0].material.diffuseColor = new BABYLON.Color3(0.4, 0.6, 0.8);
+                newMeshes[0].material.specularColor = new BABYLON.Color3(0, 0, 0);
+                newMeshes[0].material.emissiveColor = new BABYLON.Color3(0.2, 0.4, 0.4);
+                //wireframe
+                newMeshes[0].material.wireframe = true;
+
+                //add to scene metadata
+                scene.metadata.ships.push(new Ship(newMeshes[0], scene));
+            });
+            //load ship2
+            BABYLON.SceneLoader.ImportMesh("", "./", "ship2.obj", scene, function(newMeshes){
+                //material
+                newMeshes[0].material = new BABYLON.StandardMaterial("shipMaterial", scene);
+                newMeshes[0].material.diffuseColor = new BABYLON.Color3(0.4, 0.6, 0.8);
+                newMeshes[0].material.specularColor = new BABYLON.Color3(0, 0, 0);
+                newMeshes[0].material.emissiveColor = new BABYLON.Color3(0.2, 0.4, 0.4);
+                //wireframe
+                newMeshes[0].material.wireframe = true;
+
+                //add to scene metadata
+                scene.metadata.ships.push(new AIShip(newMeshes[0], scene));
+                scene.metadata.targetShip = scene.metadata.ships[0];
+            });
+
+
+            let params = {
+                width: 400,
+                height: 400,
+                subdivisions: 100,
+            }
+            scene.metadata.terrain = new CustomGround(scene, params);
+            
+            
+            return scene;
+        }
+
+        class CustomGround {
+            constructor(scene, params){
+                this.width = params.width;
+                this.height = params.height;
+                this.subdivisions = params.subdivisions;
+                //example
+                let options = {
+                    width: this.width,
+                    height: this.height,
+                    subdivisions: this.subdivisions,
+                    updatable: true,
+                    isPickable: true,
+                }
+                
+
+                this.mesh = BABYLON.MeshBuilder.CreateGround("ground", options, scene);
+                
+
+
+                this.mesh.material = scene.metadata.materials.groundMaterialWireframe;
+                this.mesh.position.y = 0;
+                this.mesh.checkCollisions = true;
+
+                this.cullingMesh = BABYLON.MeshBuilder.CreateGround("ground2", options, scene);
+                this.cullingMesh.material = scene.metadata.materials.groundMaterialBlack;
+                this.cullingMesh.position.y = -0.5;
+                this.cullingMesh.checkCollisions = false;
+                //set the position and vertices to be the same as the mesh
+                //set geometry
+                
+
+
+
+
+            }
+            update(centerX, centerZ){
+                //update in subdivision increments, modulo
+
+                let camera = scene.activeCamera;
+                let angle = camera.rotation.y;
+                let distance = 110;
+                //increase distance (cap at 1.5x) depending on velocity of ship 0
+                //multiply distance by length of velocity vector, if ship exists
+                if(scene.metadata.ships[0]){
+                    let ship = scene.metadata.ships[0];
+                    let length = ship.velocity.length();
+                    distance *= length;
+                }
+                //cap distance
+                if(distance > 110*1.5){
+                    distance = 110*1.5;
+                }
+
+                centerX += Math.sin(angle)*distance;
+                centerZ += Math.cos(angle)*distance;
+
+                let xLength = this.width/this.subdivisions;
+                let zLength = this.height/this.subdivisions;
+
+                centerX = Math.floor(centerX/(xLength))*xLength;
+                centerZ = Math.floor(centerZ/(zLength))*zLength;
+
+                //shift in front of active scene camera using sin and cos
+                
+
+                //get x length of one subdivision
+                
+
+
+                this.mesh.position.x = centerX;
+                this.mesh.position.z = centerZ;
+                this.cullingMesh.position.x = centerX;
+                this.cullingMesh.position.z = centerZ;
+
+                //rotate
+
+
+                //edit the vertices
+                //start timer
+                let positions = this.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+                let numberOfVertices = positions.length/3;
+                //create color data as float32array
+                let colors = new Float32Array(numberOfVertices*4);
+
+
+                for(let i = 0; i < numberOfVertices; i++){
+                    
+                    let x = positions[i*3] + centerX;
+                    let z = positions[i*3+2] + centerZ;
+                    let y = (map.get(x, z)*60);
+                    //come up with a color based on height
+                    let color = new BABYLON.Color3(0, 0, 0);
+                    //if y<10, green, else purple
+                    if(y < 2){
+                        color.r = 0;
+                        color.g = 1;
+                        color.b = 0;
+                    }else{
+                        color.r = 0.5;
+                        color.g = 0;
+                        color.b = 0.5;
+                    }
+
+
+                    colors[i*4] = color.r;
+                    colors[i*4+1] = color.g;
+                    colors[i*4+2] = color.b;
+                    colors[i*4+3] = 1;
+                
+                    positions[i*3+1] = y
+                }
+
+
+                //add color data to mesh
+                this.cullingMesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+                this.mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, colors);
+                this.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+                this.mesh.updateCoordinateHeights();
+            }
+
+
+
+
+        }
+
+
+
+
+
+
+        class Ship {
+            constructor(mesh, scene){
+                this.scene = scene;
+                this.mesh = mesh;
+                //mesh not pickable
+                this.mesh.isPickable = false;
+                this.rotation = mesh.rotation;
+                this.position = mesh.position;
+                this.position.x = 15;
+                this.position.y = 35;
+                this.position.z = 15;
+                this.velocity = new BABYLON.Vector3(0,0,0.8);
+                this.controls = {
+                    rotationInput: new BABYLON.Vector3(0,0,0),
+                    throttleInput: 0.1,
+                    brakeInput: 0,
+                };
+                this.engineParticles = new BABYLON.GPUParticleSystem("particles", 2500, scene);
+                this.engineParticles.emitter = this.mesh;
+                //size
+                this.engineParticles.minSize = 0.02;
+                this.engineParticles.maxSize = 0.08;
+                //lifetime
+                this.engineParticles.minLifeTime = 2;
+                this.engineParticles.maxLifeTime = 6;
+                //low divergence of particles, straight beam backwards
+
+                //emitrate
+                this.engineParticles.emitRate = 1;
+                //texture particle.bmp
+                this.engineParticles.particleTexture = new BABYLON.Texture("particle.bmp", scene);
+                //direction
+                this.engineParticles.direction1 = new BABYLON.Vector3(-0.1, 0, -0.1);
+                this.engineParticles.direction2 = new BABYLON.Vector3(0.1, 0, 0.1);
+                //update rate
+                this.engineParticles.updateSpeed = 0.01;
+
+                this.engineParticles.start();
+
+                //use baking transform to flip ship
+                this.mesh.bakeTransformIntoVertices(BABYLON.Matrix.RotationY(Math.PI));
+                //use setPivotPoint(vec3)
+                this.mesh.setPivotPoint(new BABYLON.Vector3(0,0.9,0));
+        
+            }
+            update(){
+                let ship=this;
+                let rotationInput = new BABYLON.Vector3(0,0,0);
+                if(pressedKeys["q"]){
+                    rotationInput.z += 0.25;
+                }
+                if(pressedKeys["e"]){
+                    rotationInput.z -= 0.25;
+                }
+                if(pressedKeys["w"]){
+                    rotationInput.x += 0.08;
+                }
+                if(pressedKeys["s"]){
+                    rotationInput.x -= 0.08;
+                }
+                if(pressedKeys["d"]){
+                    rotationInput.y += 0.05;
+                }
+                if(pressedKeys["a"]){
+                    rotationInput.y -= 0.05;
+                }
+                //change thrust input (lerp)
+                let throttleInput = 0;
+                if(pressedKeys[" "]){
+                    throttleInput = 1;
+                }
+                ship.controls.throttleInput = Math.floor(255*((ship.controls.throttleInput*0.85) + (throttleInput*0.15)))/255;
+                
+                //same for brakeinput
+                let brakeInput = 0;
+                if(pressedKeys["b"]){
+                    brakeInput = 1;
+                }
+                ship.controls.brakeInput = (ship.controls.brakeInput*0.9) + (brakeInput*0.1);
+                
+                //lerp between old rotation input and new rotation input
+                let rotationInputLerp = BABYLON.Vector3.Lerp(ship.controls.rotationInput, rotationInput, 0.12);
+                ship.controls.rotationInput = rotationInputLerp.clone();
+            }
+            get altitudeAGL(){
+                //read from this.scene.metadata.terrain.mesh.getHeightAtCoordinates
+                let x = this.position.x;
+                let z = this.position.z;
+                //read from future position
+                let angle = this.rotation.y;
+                let distance = 8;
+                x += Math.sin(angle)*distance;
+                z += Math.cos(angle)*distance;
+
+
+                let y = this.scene.metadata.terrain.mesh.getHeightAtCoordinates(x, z);
+                return this.position.y - y;
+            }
+        
+        }
+        class AIShip extends Ship {
+            constructor(mesh, scene){
+                super(mesh, scene);
+                
+            }
+            update(){
+                //update controls- try to stay level both in pitch and roll
+                //access controls of super
+                //decay the inputs
+                this.controls.rotationInput.scaleInPlace(0.9);
+                let oldInputs = this.controls.rotationInput.clone();
+                
+                
+                
+                //target position is scene.metadata.ships[0].mesh.position
+                let targetPosition = this.scene.metadata.targetShip.mesh.position.clone();
+                //get direction to target
+                let directionToTarget = targetPosition.subtract(this.position).normalize();
+                let distanceToTarget = BABYLON.Vector3.Distance(targetPosition, this.position);
+                //use relative velocity to calculate time to intercept
+                let relativeVelocity = this.scene.metadata.targetShip.velocity.subtract(this.velocity);
+                let timeToIntercept = distanceToTarget/relativeVelocity.length();
+                //use time to intercept to calculate target position
+                targetPosition.addInPlace(relativeVelocity.scale(timeToIntercept));
+                
+                //proportional if further away than 10, otherwise direct pursuit
+                let guidanceTerminal = (Math.min(50/(distanceToTarget),1)*0.1)+0.9;
+                
+                let gain = 0.8;
+                //if speed is below 1, reduce gain
+                if(this.velocity.length() < 0.7){
+                    gain = 0.2;
+                }
+                let angleCap = 0.25;
+
+                //transform the direction to local space
+                let directionToTargetLocal = BABYLON.Vector3.TransformNormal(directionToTarget, this.mesh.getWorldMatrix().clone().invert());
+                //get the angle between the direction to target and the forward vector
+                let angleH = Math.atan2(directionToTargetLocal.x, directionToTargetLocal.z);
+                //set the rotation input to the angle
+                
+                let angleV = Math.atan2(directionToTargetLocal.y, directionToTargetLocal.z);
+                angleV = Math.max(Math.min(angleV, angleCap), -angleCap);
+                angleH = Math.max(Math.min(angleH, angleCap), -angleCap);
+                
+                this.controls.rotationInput.z = -(angleH*guidanceTerminal)*gain;
+                this.controls.rotationInput.y = (angleH*guidanceTerminal)*gain;
+                this.controls.rotationInput.x = -(angleV*guidanceTerminal)*gain;
+
+                //second guidance factor: try to get off-axis relative velocity to target to 0
+                //get velocity of target
+                let targetVelocity = this.scene.metadata.targetShip.velocity.clone();
+                //get overlap of axis
+                let overlap = BABYLON.Vector3.Dot(targetVelocity, this.velocity);
+                //get the component of target velocity that is not on the same axis as the ship
+                let targetVelocityOffAxis = targetVelocity.subtract(this.velocity.scale(overlap/this.velocity.length()));
+                //get the direction of the off-axis velocity
+                let directionOffAxis = targetVelocityOffAxis.normalize();
+                //transform the direction to local space
+                let directionOffAxisLocal = BABYLON.Vector3.TransformNormal(directionOffAxis, this.mesh.getWorldMatrix().clone().invert());
+                //get the angle between the direction to target and the forward vector
+                let angleOffAxis = Math.atan2(directionOffAxisLocal.x, directionOffAxisLocal.z);
+                //set the rotation input to the angle
+                
+                //angle cap
+                angleOffAxis = Math.max(Math.min(angleOffAxis, angleCap), -angleCap);
+
+                this.controls.rotationInput.z -= (angleOffAxis*(1-guidanceTerminal))*gain;
+                this.controls.rotationInput.y += (angleOffAxis*(1-guidanceTerminal))*gain;
+                
+
+                //repeat for vertical
+                let angleOffAxisV = Math.atan2(directionOffAxisLocal.y, directionOffAxisLocal.z);
+                angleOffAxisV = Math.max(Math.min(angleOffAxisV, angleCap), -angleCap);
+
+                this.controls.rotationInput.x += -(angleOffAxisV*(1-guidanceTerminal))*gain;
+
+
+                let targetSpeed = Math.max(Math.min(distanceToTarget/25,5),0.6);
+
+                //opposite of this.mesh.up
+                let down = this.mesh.up.scale(-1);
+                let forward = this.mesh.forward;
+                let diagonalDown = down.add(forward).normalize();
+                let ray = new BABYLON.Ray(this.position, diagonalDown, 30);
+                let pick = this.scene.pickWithRay(ray, (mesh)=>{
+                    return mesh.name == "ground";
+                });
+                if(pick.hit){
+                    //if there is terrain in the way, reduce target speed
+                    //if the terrain is close, try to avoid it by pitching up
+                    if(pick.distance < 30){
+
+                        let targetAngle = Math.atan2(pick.pickedPoint.y-this.position.y, pick.pickedPoint.z-this.position.z);
+                        let angle = Math.atan2(this.mesh.forward.y, this.mesh.forward.z);
+                        let angleDiff = targetAngle-angle;
+
+                        this.controls.rotationInput.x += angleDiff*0.09;
+
+                        //lerp
+
+
+                    }
+                }
+                this.rotationInput = BABYLON.Vector3.Lerp(oldInputs, this.controls.rotationInput, 0.2);
+
+
+                //update throttle
+                
+                //speed kept around 0.8- if faster brake, if slower throttle
+                //brake if faster than 1.1, throttle if slower than 0.7, in between do nothing
+                let speed = this.velocity.length();
+                let throttleInput = 0;
+                let brakeInput = 0;
+                if(speed > targetSpeed+0.2){
+                    brakeInput = 0.7;
+                    throttleInput = 0;
+                }else if(speed < targetSpeed-0.2){
+                    throttleInput = 0.8;
+                } else {
+                    throttleInput = 0;
+                    brakeInput = 0;
+                }
+                //if pointing straight at target, go faster
+                
+                this.controls.throttleInput = (this.controls.throttleInput*0.9) + (throttleInput*0.1);
+                this.controls.brakeInput = (this.controls.brakeInput*0.9) + (brakeInput*0.1);
+
+
+                
+
+
+
+
+            }
+        }
+
+        var scene = setupScene();
+        
+        let instrumentation = new BABYLON.SceneInstrumentation(scene);
+        instrumentation.captureFrameTime = true;
+        instrumentation.captureRenderTime = true;
+        instrumentation.captureInterFrameTime = true;
+        
+
+
+        engine.runRenderLoop(function(){
+        
+        scene.metadata.performance.text = "FPS: " + Math.round(1000/instrumentation.interFrameTimeCounter.current * 100) / 100 + "\n" + "Frame Time: " + Math.round(instrumentation.frameTimeCounter.current * 100) / 100 + "ms" + "\n" + "Render Time: " + Math.round(instrumentation.renderTimeCounter.current * 100) / 100 + "ms" + "\n" + "Interframe Time: " + Math.round(instrumentation.interFrameTimeCounter.current * 100) / 100 + "ms";
+        
+    
+        //move all ships
+        for(let i = 0; i < scene.metadata.ships.length; i++){
+                let ship = scene.metadata.ships[i];
+            
+                ship.update();
+                let rotationInputLerp = ship.controls.rotationInput.clone();
+                let rotationAmount = rotationInputLerp.length()/4;
+                ship.mesh.rotate(rotationInputLerp.normalize(), rotationAmount, BABYLON.Space.LOCAL);
+                
+                //lerp between velocity vector and rotation vector, in both ways
+                let angleOfAttack = Math.acos(BABYLON.Vector3.Dot(ship.mesh.forward.normalize(), ship.velocity.clone().normalize()));
+                //if nan, set to 0
+                if(isNaN(angleOfAttack)){
+                    angleOfAttack = 0;
+                }
+
+                let rotationVel = ship.mesh.forward.scale(ship.velocity.length());
+                
+                //wing lift is maximized at 15°, but stalls at 25°
+                let maxLiftAngle = 0.26;
+                let stallAngle = 0.35;
+                let stallSpeed = 0.4;
+                
+                //strength lerps from 0.1 to 1 (at maxLiftAngle) and then to 0.14 (at stallAngle)
+                //use linear interpolation
+                if(angleOfAttack < maxLiftAngle){
+                    //scalar lerp 1
+                    strength = 0.1 + (angleOfAttack/maxLiftAngle)*0.9;
+                } else {
+                    //scalar lerp 2
+                    strength = 1 - ((angleOfAttack-maxLiftAngle)/(stallAngle-maxLiftAngle))*0.86;
+                }
+                strength = strength*0.7;
+
+
+                if(angleOfAttack > stallAngle){
+                    strength = 0.01;
+                }
+                //stall speed is 0.4
+                if(ship.velocity.length() < stallSpeed){
+                    strength *= ship.velocity.length()/stallSpeed;
+                }
+                strength *= 0.55;
+
+                ship.velocity = BABYLON.Vector3.Lerp(ship.velocity, rotationVel, 0.2*strength);
+                
+                //get angle of attack
+                //if that is high, rotate() ship.mesh to match velocity
+                if(angleOfAttack > 0.06){
+                    let axis = BABYLON.Vector3.Cross(ship.mesh.forward, ship.velocity.clone().normalize());
+                    ship.mesh.rotate(axis, 0.000025, BABYLON.Space.WORLD);
+                }
+                
+                //high angle of attack = high drag
+                let drag = ((angleOfAttack**2)/3*ship.velocity.length()/5)*0.2;
+                //vertical angle of attack = high drag
+
+                //add brake input
+                drag += ship.controls.brakeInput*0.006;
+
+                if(ship.velocity.length() > 0.1){
+                    ship.velocity = ship.velocity.scale(1-drag);
+                }
+
+                //apply gravity
+                ship.velocity.y -= 0.002;
+                
+
+                
+                //if stalled, thrust is reduced
+
+
+
+                //couple particlesystem emission rate to throttle input
+                ship.engineParticles.emitRate = ship.controls.throttleInput*120;
+                //color is blue if speed vector length is less than 0.5, red if greater than 0.5
+                if(ship.velocity.length() < 0.8){
+                    ship.engineParticles.color1 = new BABYLON.Color4(0.2, 0.2, 1, 1);
+                    ship.engineParticles.color2 = new BABYLON.Color4(0.2, 0.2, 1, 1);
+                } else {
+                    ship.engineParticles.color1 = new BABYLON.Color4(1, 0.2, 0.2, 1);
+                    ship.engineParticles.color2 = new BABYLON.Color4(1, 0.2, 0.2, 1);
+                }
+
+                
+
+
+                let thrust = 0.012;
+                if(ship.velocity.length() < 0.8 && ship.velocity.length() > 0.2){
+                    thrust *= 0.55;
+                }
+                //if less than 0.15, startup kick
+                if(ship.velocity.length() < 0.15){
+                    thrust *= 2;
+                    //if not started
+                }
+                //manage start stop state
+                if(ship.controls.throttleInput > 0.1 && !ship.started){
+                    ship.started = true;
+                    ship.engineParticles.start();
+                    if(ship.velocity.length() < 0.15){
+                        ship.velocity.y += 0.1;
+                        ship.position.y += 0.1;
+                    }
+
+                } else if(ship.controls.throttleInput < 0.1 && ship.started){
+                    ship.started = false;
+                    ship.engineParticles.stop();
+                }
+                
+
+
+                ship.velocity = ship.velocity.add(ship.mesh.forward.scale(ship.controls.throttleInput*thrust));
+
+
+                
+                //let mapHeight = scene.metadata.terrain.mesh.getHeightAtCoordinates(ship.position.x, ship.position.z);            
+                let mapHeight = map.get(ship.position.x, ship.position.z)*60;
+                mapHeight = Math.max(mapHeight, 0);
+                if(ship.position.y < mapHeight){
+                    ship.position.y = ship.position.y*0+mapHeight*1;
+                    ship.velocity.y = 0;
+                    ship.velocity = ship.velocity.scale(0.01);
+                    //apply strong drag
+                }
+               
+                
+                ship.mesh.moveWithCollisions(ship.velocity);
+
+
+
+
+
+                
+
+            if(i==0){
+            //point camera at ship using lookAt
+            scene.activeCamera.setTarget(ship.position);
+            
+            //move camera behind ship, smoothly
+            let cameraOffset = new BABYLON.Vector3(0, 2, -5.4);
+
+            //if camera offset metadata not set, set it
+            if(!scene.metadata.cameraOffset){
+                scene.metadata.cameraOffset = cameraOffset;
+            }
+            //modify camera offset with arrow keys
+            if(pressedKeys["ArrowUp"]){
+                cameraOffset.z += 5;
+                cameraOffset.y += 3;
+            }
+            if(pressedKeys["ArrowDown"]){
+                cameraOffset.z += 5;
+                cameraOffset.y -= 3;
+            }
+            if(pressedKeys["ArrowLeft"]){
+                cameraOffset.x -= 4;
+                cameraOffset.y += 2;
+            }
+            if(pressedKeys["ArrowRight"]){
+                cameraOffset.x += 4;
+                cameraOffset.y += 2;
+            }
+            
+            cameraOffset = BABYLON.Vector3.Lerp(scene.metadata.cameraOffset, cameraOffset, 0.08);
+            
+            scene.metadata.cameraOffset = cameraOffset.clone();
+
+
+            cameraOffsetGlobal = BABYLON.Vector3.TransformCoordinates(cameraOffset, ship.mesh.getWorldMatrix());
+            scene.activeCamera.position = BABYLON.Vector3.Lerp(scene.activeCamera.position, cameraOffsetGlobal, 0.3);
+            
+            //draw flight data
+            let speed = ship.velocity.length();
+            let angleOfAttack = Math.acos(BABYLON.Vector3.Dot(ship.mesh.forward.normalize(), ship.velocity.clone().normalize()));
+            //if nan, set to 0
+            if(isNaN(angleOfAttack)){
+                angleOfAttack = 0;
+            }
+            let angleOfAttackDegrees = angleOfAttack*180/Math.PI;
+            let angleOfAttackDegreesRounded = Math.round(angleOfAttackDegrees*100)/100;
+            let speedRounded = Math.round(speed*120*100)/100;
+            let speedText = "Speed: " + speedRounded + " m/s";
+            let angleOfAttackText = "Angle of Attack: " + angleOfAttackDegreesRounded + "°";
+            let throttleInputText = "Throttle: " + Math.round(ship.controls.throttleInput*100) + "%";
+            //draw text to scene.metadata.hud   
+            scene.metadata.hud.text = speedText + "\n" + angleOfAttackText + "\n" + throttleInputText;
+        
+    
+            }
+
+            scene.metadata.terrain.update(scene.activeCamera.position.x, scene.activeCamera.position.z);
+        }
+
+        //render call
+
+
+        scene.render();
+        
+        });
+        window.addEventListener('resize', function(){
+            engine.resize();
+        });
+
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+        //hide scrollbars
+        document.body.style.overflow = 'hidden';
+        //also hide cursor
+        //document.body.style.cursor = 'none';
+        //hide left side image gap
+        document.body.style.margin = '0px';
+
+        //loop background music "phasing_through.ogg"
+        let bgm = new Audio("./Phasing_through.ogg");
+        bgm.loop = true;
+        //on keypress, play bgm
+        document.addEventListener('keydown', function(){
+            bgm.play();
+        });        
+
+        //on x button press, switch the ships in scene.metadata.ships
+        document.addEventListener('keydown', function(e){
+            if(e.key == "x"){
+            //swap the array elements
+            scene.metadata.ships = [scene.metadata.ships[1], scene.metadata.ships[0]];     
+         }
+        });
+
+
+
+    </script>
+</html>
