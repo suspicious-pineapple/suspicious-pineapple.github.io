@@ -203,10 +203,16 @@
             let softbody = new Softbody(100,100,10,10,20,400);
 
             let lastTime = Date.now();
-            function update(time) {
-                let delta = time - lastTime;
-                lastTime = time;
-                delta = 0.3;
+            function update() {
+                let delta = Date.now() - lastTime;
+                lastTime = Date.now();
+                delta = delta / 18;
+
+                //max delta to 0.5
+                if(delta > 0.5){
+                    delta = 0.5;
+                }
+
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 softbody.update(delta);
                 softbody.draw(ctx);
