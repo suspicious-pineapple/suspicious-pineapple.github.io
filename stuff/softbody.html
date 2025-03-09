@@ -17,6 +17,7 @@
                     this.vx = 0;
                     this.vy = 0;
                     this.mass = mass;
+                    this.hidden = false;
                 }
                 getNeighbors(grid, width, height) {
                     let neighbors = [];
@@ -28,6 +29,8 @@
                             let x = this.gridx + i;
                             let y = this.gridy + j;
                             if (x >= 0 && x < width && y >= 0 && y < height) {
+                                //if hidden, don't add to neighbors
+                               
                                 neighbors.push(grid[x][y]);
                             }
                         }
@@ -66,6 +69,9 @@
                             let point = this.grid[i][j];
                             let neighbors = point.getNeighbors(this.grid, this.width, this.height);
                             for (let neighbor of neighbors) {
+                                if(neighbor.hidden){
+                                    continue;
+                                }
                                 let dx = neighbor.x - point.x;
                                 let dy = neighbor.y - point.y;
 
@@ -96,9 +102,9 @@
                                 let centerdx = center.x - point.x;
                                 let centerdy = center.y - point.y;
                                 let centerDist = Math.sqrt(centerdx * centerdx + centerdy * centerdy);
-                                if(centerDist < 100){
-                                    let repelX = centerdx * -0.01;
-                                    let repelY = centerdy * -0.01;
+                                if(centerDist < 120){
+                                    let repelX = centerdx * -0.009;
+                                    let repelY = centerdy * -0.009;
                                     point.vx += repelX / point.mass * delta;
                                     point.vy += repelY / point.mass * delta;
                                 }
@@ -112,7 +118,7 @@
                         let centerdx = center.x - corner.x;
                         let centerdy = center.y - corner.y;
                         let centerDist = Math.sqrt(centerdx * centerdx + centerdy * centerdy);
-                        if(centerDist < 100){
+                        if(centerDist < 300){
                             let repelX = centerdx * -0.01;
                             let repelY = centerdy * -0.01;
                             corner.vx += repelX / corner.mass * delta;
@@ -139,6 +145,9 @@
                     for (let i = 0; i < this.width; i++) {
                         for (let j = 0; j < this.height; j++) {
                             let point = this.grid[i][j];
+                            if(point.hidden){
+                                continue;
+                            }
                             ctx.beginPath();
                             ctx.arc(this.x+point.x, this.y+point.y, 2, 0, 2 * Math.PI);
                             ctx.fill();
@@ -149,6 +158,9 @@
                     for (let i = 0; i < this.width; i++) {
                         for (let j = 0; j < this.height; j++) {
                             let point = this.grid[i][j];
+                            if(point.hidden){
+                                continue;
+                            }
                             let neighbors = point.getNeighbors(this.grid, this.width, this.height);
                             for (let neighbor of neighbors) {
                                 ctx.beginPath();
@@ -187,7 +199,37 @@
                     closestPoint.vy = 0;
                     closestPoint.x = x - this.x;
                     closestPoint.y = y - this.y;
+                    //toggle hidden on the point
 
+                }
+
+                toggleHiddenOnClick(x,y){
+                    //find point closest to cursor
+                    //toggle hidden on that point
+                    let closestPoint = null;
+                    let closestDist = 0;
+                    for (let i = 0; i < this.width; i++) {
+                        for (let j = 0; j < this.height; j++) {
+                            let point = this.grid[i][j];
+                            let dx = x - point.x - this.x;
+                            let dy = y - point.y - this.y;
+                            let dist = Math.sqrt(dx * dx + dy * dy);
+                            if (closestPoint == null || dist < closestDist) {
+                                closestPoint = point;
+                                closestDist = dist;
+                            }
+                        }
+                    }
+                    //if closest point is too far away, don't grab it
+                    if(closestDist > 50){
+                        return;
+                    }
+                    closestPoint.hidden = true;
+                    //also neighbors
+                    let neighbors = closestPoint.getNeighbors(this.grid, this.width, this.height);
+                    for(let neighbor of neighbors){
+                        neighbor.hidden = true;
+                    }
 
                 }
 
@@ -226,11 +268,18 @@
             let mouseDown = false;
             //on mouse down
             canvas.addEventListener("mousedown", function (e) {
+                //ignore right click
+                if(e.button == 2){
+                    return;
+                }
                 mouseDown = true;
                 softbody.cursorGrab(e.offsetX, e.offsetY);
             });
             //on mouse up
             canvas.addEventListener("mouseup", function (e) {
+                if(e.button == 2){
+                    return;
+                }
                 mouseDown = false;
             });
             let mouseX = 0;
@@ -258,6 +307,11 @@
                 e.preventDefault();
             });
 
+            //toggle hidden on right click
+            canvas.addEventListener("contextmenu", function (e) {
+                e.preventDefault();
+                softbody.toggleHiddenOnClick(e.offsetX, e.offsetY);
+            });
 
 
 
