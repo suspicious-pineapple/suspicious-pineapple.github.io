@@ -236,6 +236,22 @@
                 mouseY = e.offsetY;
             });
 
+            //touchscreen support
+            canvas.addEventListener("touchstart", function (e) {
+                mouseDown = true;
+                softbody.cursorGrab(e.touches[0].clientX, e.touches[0].clientY);
+                e.preventDefault();
+            });
+            canvas.addEventListener("touchend", function (e) {
+                mouseDown = false;
+                e.preventDefault();
+            });
+            canvas.addEventListener("touchmove", function (e) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+                e.preventDefault();
+            });
+
 
 
 
