@@ -38,11 +38,11 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
         const xDiff = waveSources[i+0]-this.thread.x;
         const yDiff = waveSources[i+1]-this.thread.y;
         
-        const c = 40;
+        const c = 60;
         const dist = Math.sqrt(xDiff*xDiff+yDiff*yDiff)+2;
 
         const invDist = 1/dist;
-        let timeToLiveAdj = timeToLive+(dist/c);
+        const timeToLiveAdj = timeToLive+(dist/c);
         /*
         if(timeToLiveAdj+1.2<0){
             continue;
@@ -55,20 +55,19 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
         //freq = freq / (dist*0.05);
 
 
-        let shiftMag = Math.sin(-time*freq+dist/5);
+        let shiftMag = Math.sin(-time*freq+dist/5)*(invDist);
 
 
-        let shiftX = Math.sin(shiftDir)*(invDist)*shiftMag;
-        let shiftY = Math.cos(shiftDir)*(invDist)*shiftMag;
+        let shiftX = Math.sin(shiftDir)*shiftMag;
+        let shiftY = Math.cos(shiftDir)*shiftMag;
 
 
-        let overdrawBudget = 1.2;
+        let overdrawBudget = 0.7;
 
 
 
         if((time - spawnTime)*c < dist){
-            shiftX = 0;
-            shiftY = 0;
+            mag = 0;
 
         } //else if(timeToLiveAdj <0) {
 
@@ -82,7 +81,7 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
             mag=mag*overdraw;
 
         //}
-
+        mag=mag;
         shiftTotalX+=shiftX*mag;
         shiftTotalY+=shiftY*mag;
     }
@@ -93,8 +92,16 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
 
     let pixel = sourceimg[pixelY][pixelX];
 
-    //this.color(pixel[0]+Math.sqrt(shiftTotalX*shiftTotalX+shiftTotalY*shiftTotalY)/4, pixel[1], pixel[2], 1);
+    let totalDisplace = Math.sqrt(shiftTotalX*shiftTotalX+shiftTotalY*shiftTotalY);
+    if(shiftTotalX<1.9 && shiftTotalX > 1.82){
+        this.color(pixel[0]*+0.8, pixel[1]*+0.6, pixel[2]+0.6, 1);
+        
+    } else {
+
         this.color(pixel[0], pixel[1], pixel[2], 1);
+    }
+
+    //this.color(pixel[0]+Math.sqrt(shiftTotalX*shiftTotalX+shiftTotalY*shiftTotalY)/4, pixel[1], pixel[2], 1);
     
 },{
     "dynamicArguments":true 
@@ -150,8 +157,33 @@ document.getElementById("fishimage").addEventListener("load",()=>{
 })
 
 let renderCanvas = render.getCanvas();
+let isClicked = false;
+let wasClicked = false;
+let moveCounter = 0;
+renderCanvas.addEventListener("mousedown",(e)=>{
+    isClicked=true;
+    wasClicked = false;
+    moveCounter=0;
+    addWaveSource(e.x,renderCanvas.height-e.y,35,0.07,0.09);
+
+});
+renderCanvas.addEventListener("mouseup",(e)=>{
+    isClicked=false;
+    wasClicked = false;
+})
 renderCanvas.addEventListener("mousemove",(e)=>{
-    addWaveSource(e.x,renderCanvas.height-e.y,99,3,0.2);
+    if(isClicked){
+        if(!wasClicked){
+            addWaveSource(e.x,renderCanvas.height-e.y,35,0.07,0.09);
+            wasClicked=true;
+            
+        } else {
+            if(moveCounter%2==0){
+                addWaveSource(e.x,renderCanvas.height-e.y,25,0.05,0.05);
+            }
+            moveCounter++;
+        }
+    }
 
 
 
