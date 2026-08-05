@@ -1,0 +1,170 @@
+<html>
+
+
+<head>
+    <script src="https://unpkg.com/gpu.js@2.23.0/dist/gpu-browser.min.js"></script>
+    <image src="./fih.jpg" style="display: none;" id="fishimage"></image>
+</head>
+
+<body>
+
+</canvas>
+
+<script>
+
+let simulationTime = 0;
+
+const gpu = new GPU({ mode: 'webgl2' });
+let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
+    
+
+    let shiftTotalX = 0;
+    let shiftTotalY = 0;
+
+    for(let i = 0; i < numSources*6;i+=6){
+        
+       //let mag = this.constants.waveSources[i][2];
+       //let freq = this.constants.waveSources[i][3];
+       //let spawnTime = this.constants.waveSources[i][4];
+       //let deathTime = this.constants.waveSources[i][5];
+       //let timeToLive = deathTime-time;
+       //let xDiff = this.constants.waveSources[i][0]-this.thread.x;
+       //let yDiff = this.constants.waveSources[i][1]-this.thread.y;
+        let mag = waveSources[i+2];
+        const freq = waveSources[i+3];
+        const spawnTime = waveSources[i+4];
+        const deathTime = waveSources[i+5];
+        const timeToLive = deathTime-time;
+        const xDiff = waveSources[i+0]-this.thread.x;
+        const yDiff = waveSources[i+1]-this.thread.y;
+        
+        const c = 40;
+        const dist = Math.sqrt(xDiff*xDiff+yDiff*yDiff)+2;
+
+        const invDist = 1/dist;
+        let timeToLiveAdj = timeToLive+(dist/c);
+        /*
+        if(timeToLiveAdj+1.2<0){
+            continue;
+        }
+        */
+        
+        //let shiftDir = Math.atan2(this.constants.waveSources[i][0]-this.thread.x, this.constants.waveSources[i][1]-this.thread.y);
+        let shiftDir = Math.atan2(waveSources[i+0]-this.thread.x, waveSources[i+1]-this.thread.y);
+
+        //freq = freq / (dist*0.05);
+
+
+        let shiftMag = Math.sin(-time*freq+dist/5);
+
+
+        let shiftX = Math.sin(shiftDir)*(invDist)*shiftMag;
+        let shiftY = Math.cos(shiftDir)*(invDist)*shiftMag;
+
+
+        let overdrawBudget = 1.2;
+
+
+
+        if((time - spawnTime)*c < dist){
+            shiftX = 0;
+            shiftY = 0;
+
+        } //else if(timeToLiveAdj <0) {
+
+            
+            let overdraw = (overdrawBudget-Math.min(-timeToLiveAdj,overdrawBudget))/overdrawBudget;
+
+
+
+
+
+            mag=mag*overdraw;
+
+        //}
+
+        shiftTotalX+=shiftX*mag;
+        shiftTotalY+=shiftY*mag;
+    }
+    
+    let pixelX = Math.floor(this.thread.x+shiftTotalX);
+    let pixelY = Math.floor(this.thread.y+shiftTotalY);
+
+
+    let pixel = sourceimg[pixelY][pixelX];
+
+    //this.color(pixel[0]+Math.sqrt(shiftTotalX*shiftTotalX+shiftTotalY*shiftTotalY)/4, pixel[1], pixel[2], 1);
+        this.color(pixel[0], pixel[1], pixel[2], 1);
+    
+},{
+    "dynamicArguments":true 
+})
+.setOutput([512,512])
+.setGraphical(true).setConstants({
+    numSources: 0,
+    //waveSources:[[100,100,80,0.006,0],[200,230,169,0.008,0]]
+    waveSources:[[100,100,80,0.006,0],[200,230,169,0.008,0]]
+});
+
+
+
+//let sources = [[100,100,80,1,0,5000],[200,230,169,2,0,5000]];
+let sources = [];
+addWaveSource(100,100,125,5.7,5);
+function addWaveSource(x,y,mag,freq,lifetime){
+
+    sources.push([x,y,mag,freq,simulationTime,simulationTime+lifetime]);
+
+    /*
+    render.setConstants({
+        numSources:sources.length,
+        waveSources:sources
+    })
+    */
+
+}
+
+document.getElementById("fishimage").addEventListener("load",()=>{
+
+
+    async function renderLoop(time){
+        simulationTime = time/1000;
+        //console.log(sources.flat());
+        //let t = Date.now()/1000 % Math.pow(2,15);
+        //console.log(t);
+        
+        for(let i = 1; i < sources.length;i++){
+            if((simulationTime-(512/40))>sources[i][5]){
+                sources.splice(i,1);
+            }
+        }
+
+        let startTime = performance.now();
+        await render(document.getElementById("fishimage"),simulationTime,(sources.flat()),sources.length);
+        console.log("render time: ", performance.now()-startTime);
+        requestAnimationFrame(renderLoop);
+    }
+    requestAnimationFrame(renderLoop);
+
+
+})
+
+let renderCanvas = render.getCanvas();
+renderCanvas.addEventListener("mousemove",(e)=>{
+    addWaveSource(e.x,renderCanvas.height-e.y,99,3,0.2);
+
+
+
+});
+document.getElementsByTagName('body')[0].appendChild(render.getCanvas());
+
+
+
+</script>
+
+
+</body>
+
+
+</html>
+
