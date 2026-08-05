@@ -8,8 +8,8 @@
 
 <body>
 
-<input type="number" id="waveStrengthInput" value=35></input>
-<input type="number" id="waveFreqInput" value="10"></input>
+<input type="number" id="waveStrengthInput" value=122></input>
+<input type="number" id="waveFreqInput" value="8"></input>
 
 <script>
 
@@ -21,38 +21,27 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
 
     let shiftTotalX = 0;
     let shiftTotalY = 0;
-
+    let controversyX = 0;
+    let controversyY = 0;
     for(let i = 0; i < numSources*6;i+=6){
-        
-       //let mag = this.constants.waveSources[i][2];
-       //let freq = this.constants.waveSources[i][3];
-       //let spawnTime = this.constants.waveSources[i][4];
-       //let deathTime = this.constants.waveSources[i][5];
-       //let timeToLive = deathTime-time;
-       //let xDiff = this.constants.waveSources[i][0]-this.thread.x;
-       //let yDiff = this.constants.waveSources[i][1]-this.thread.y;
+
         let mag = waveSources[i+2];
         const freq = waveSources[i+3];
         const spawnTime = waveSources[i+4];
         const deathTime = waveSources[i+5];
         const timeToLive = deathTime-time;
+        
+
         const xDiff = waveSources[i+0]-this.thread.x;
         const yDiff = waveSources[i+1]-this.thread.y;
         
-        let c = 60;
+        let c = 75;
         
         const dist = Math.sqrt(xDiff*xDiff+yDiff*yDiff)+2;
 
         const invDist = 1/dist;
         const timeToLiveAdj = timeToLive+(dist/c);
-        /*
-        if(timeToLiveAdj+1.2<0){
-            continue;
-        }
-        */
-        
-        //let shiftDir = Math.atan2(this.constants.waveSources[i][0]-this.thread.x, this.constants.waveSources[i][1]-this.thread.y);
-        let shiftDir = Math.atan2(waveSources[i+0]-this.thread.x, waveSources[i+1]-this.thread.y);
+        let shiftDir = Math.atan2(xDiff, yDiff);
 
         //freq = freq / (dist*0.05);
 
@@ -65,14 +54,14 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
         let shiftY = Math.cos(shiftDir)*shiftMag;
 
 
-        let overdrawBudget = 1.2;
+        let overdrawBudget = 0.9;
 
 
 
         if((time - spawnTime)*c < dist){
             mag = 0;
 
-        } //else if(timeToLiveAdj <0) {
+        } else if(timeToLiveAdj <0) {
 
             
             let overdraw = (overdrawBudget-Math.min(-timeToLiveAdj,overdrawBudget))/overdrawBudget;
@@ -83,8 +72,8 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
 
             mag=mag*overdraw;
 
-        //}
-        mag=mag;
+        }
+        
         shiftTotalX+=shiftX*mag;
         shiftTotalY+=shiftY*mag;
     }
@@ -96,8 +85,8 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
     let pixel = sourceimg[pixelY][pixelX];
     let originalPixel = sourceimg[this.thread.y][this.thread.x];
     let totalDisplace = Math.sqrt(shiftTotalX*shiftTotalX+shiftTotalY*shiftTotalY);
-    if(shiftTotalX<1.9 && shiftTotalX > 1.82){
-        this.color(pixel[0]*+0.8, pixel[1]*+0.6, pixel[2]+0.6, 1);
+    if(shiftTotalX<1.9 && shiftTotalX > 1.78){
+        this.color(pixel[0]+0.8, pixel[1]+0.6, pixel[2]+0.6, 1);
         
     } else {
 
@@ -135,6 +124,7 @@ function addWaveSource(x,y,mag,freq,lifetime){
     */
 
 }
+evalMode=true;
 
 document.getElementById("fishimage").addEventListener("load",async ()=>{
 
@@ -163,7 +153,6 @@ document.getElementById("fishimage").addEventListener("load",async ()=>{
 
 let renderCanvas = render.getCanvas();
 let isClicked = false;
-let wasClicked = false;
 let moveCounter = 0;
 
 
@@ -171,15 +160,22 @@ let moveCounter = 0;
 renderCanvas.addEventListener("mousedown",(e)=>{
     let pos = getMousePosition(renderCanvas,e);
     isClicked=true;
-    wasClicked = false;
+
     moveCounter=0;
     addWaveSource(pos.x,renderCanvas.height-pos.y,document.getElementById("waveStrengthInput").value,document.getElementById("waveFreqInput").value,0.2);
     e.preventDefault();
 });
+
+
+
 renderCanvas.addEventListener("mouseup",(e)=>{
     isClicked=false;
-    wasClicked = false;
-})
+
+});
+
+
+
+
 renderCanvas.addEventListener("mousemove",(e)=>{
     let pos = getMousePosition(renderCanvas,e);
     
@@ -189,11 +185,8 @@ renderCanvas.addEventListener("mousemove",(e)=>{
         }
         moveCounter++;
         
-    }
+    }});
 
-
-
-});
         function getMousePosition(canvas, event) {
             let rect = canvas.getBoundingClientRect();
             let x = event.clientX - rect.left;
