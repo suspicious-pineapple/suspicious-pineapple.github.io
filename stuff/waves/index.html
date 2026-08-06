@@ -114,8 +114,8 @@ function drawFish(x,y,angle,curvature,segments){
     fishContext.rotate(angle);
 
     let findex = {
-        start:3,
-        end:6
+        start:2,
+        end:7
     }
 
     let currentX = 0;
@@ -137,23 +137,14 @@ function drawFish(x,y,angle,curvature,segments){
         currentX = newCenter.x;        
         currentY = newCenter.y;
 
-        /*
-        fishContext.moveTo(segments[i],0);
-        fishContext.lineTo(segments[i],10);
-        fishContext.stroke();
-        fishContext.moveTo(-segments[i],0);
-        fishContext.lineTo(-segments[i],10);
-        fishContext.translate(0,10);
-        fishContext.stroke();
-        fishContext.rotate(currentAngle);
-        */
+
     }
     //console.log(pathPointsLeft,pathPointsRight);
     //fishContext.beginPath();
     //fishContext.moveTo(0,segments[0])
     
     let fishPath = new Path2D();
-    fishPath.moveTo(15,0);
+    fishPath.moveTo(0,0);
 
     for(let p of pathPointsLeft){
         //fishContext.lineTo(p[0],p[1]);
@@ -174,6 +165,19 @@ function drawFish(x,y,angle,curvature,segments){
     fishContext.strokeStyle="rgba(180,140,210)";
     fishContext.fill(fishPath);
     fishContext.stroke(finPath)
+    
+    let eyeSeg = getNextCoord(0,0,(curvature/segments.length)*8,14);
+    let eyePoints = getSidewaysCoords(eyeSeg.x,eyeSeg.y,(curvature/segments.length)*7,5);
+    
+    fishContext.strokeStyle="rgba(70,169,210)";
+    fishContext.beginPath();
+    fishContext.arc(eyePoints.x1,-eyePoints.y1,0.5,0,Math.PI*2);
+    fishContext.stroke();
+    fishContext.beginPath();
+    fishContext.arc(eyePoints.x2,-eyePoints.y2,0.5,0,Math.PI*2);
+    fishContext.stroke();
+    //fishContext.closePath();
+
     //fishContext.stroke();
 
 
@@ -201,7 +205,7 @@ let fishCurve = 0;
 let fishRotate = 0;
 function drawFishAnimation(){
     fishContext.clearRect(0,0,fishCanvas.width,fishCanvas.height);
-    drawFish(200,200,simulationTime/16,Math.sin(simulationTime/0.6), [[7,5],[12,18],[14,10],[15,10],[24,6],[22,4],[16,10],[17,10],[15,10],[10,18],[13,10]]);
+    drawFish(200,200,simulationTime/16,Math.sin(simulationTime/0.6), [[7,8],[12,14],[14,10],[20,2],[24,3],[22,2],[15,10],[16,10],[17,10],[15,10],[10,18],[12,10],[7,4],[1,4]]);
     
 
 }
