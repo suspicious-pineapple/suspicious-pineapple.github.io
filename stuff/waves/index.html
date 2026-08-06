@@ -2,27 +2,33 @@
 
 
 <head>
-    <script src="https://unpkg.com/gpu.js@2.23.0/dist/gpu-browser.min.js"></script>
+    <script src="https://unpkg.com/gpu.js@latest/dist/gpu-browser.min.js"></script>
     <image src="./fih.jpg" style="display: none;" id="fishimage"></image>
+    <image src="./single_fish.png" style="display: none;" id="fishtexture"></image>
 </head>
 
 <body>
 
 <input type="number" id="waveStrengthInput" value=122></input>
 <input type="number" id="waveFreqInput" value="8"></input>
-
+<canvas id="fishCanvas" width=512 height=512></canvas>
 <script>
 
 let simulationTime = 0;
+let simWidth = 512;
+let simHeight = 512;
 
 const gpu = new GPU({ mode: 'webgl2' });
-let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
-    
+//const gpu2 = new GPU({ mode: 'webgpu' });
 
+console.log(gpu.isSinglePrecisionSupported);
+
+
+let distort = gpu.createKernel(function(time,waveSources,numSources) {
+    
     let shiftTotalX = 0;
     let shiftTotalY = 0;
-    let controversyX = 0;
-    let controversyY = 0;
+    let totalMag = 0;
     for(let i = 0; i < numSources*6;i+=6){
 
         let mag = waveSources[i+2];
@@ -30,8 +36,6 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
         const spawnTime = waveSources[i+4];
         const deathTime = waveSources[i+5];
         const timeToLive = deathTime-time;
-        
-
         const xDiff = waveSources[i+0]-this.thread.x;
         const yDiff = waveSources[i+1]-this.thread.y;
         
@@ -43,73 +47,167 @@ let render = gpu.createKernel(function(sourceimg,time,waveSources,numSources) {
         const timeToLiveAdj = timeToLive+(dist/c);
         let shiftDir = Math.atan2(xDiff, yDiff);
 
-        //freq = freq / (dist*0.05);
 
 
-        let shiftMag = Math.sin(-time*freq+dist/(freq*0.5))*(invDist);
-        //let shiftMag = Math.sin(-time*freq+dist/5);
+        mag = mag*Math.sin(-time*freq+dist/(freq*0.5))*(invDist);
 
-
-        let shiftX = Math.sin(shiftDir)*shiftMag;
-        let shiftY = Math.cos(shiftDir)*shiftMag;
-
+        let shiftX = Math.sin(shiftDir);
+        let shiftY = Math.cos(shiftDir);
 
         let overdrawBudget = 0.9;
 
-
-
         if((time - spawnTime)*c < dist){
             mag = 0;
-
         } else if(timeToLiveAdj <0) {
-
-            
             let overdraw = (overdrawBudget-Math.min(-timeToLiveAdj,overdrawBudget))/overdrawBudget;
-
-
-
-
-
             mag=mag*overdraw;
-
         }
-        
+        totalMag+=mag;
         shiftTotalX+=shiftX*mag;
         shiftTotalY+=shiftY*mag;
     }
     
-    let pixelX = Math.floor(this.thread.x+shiftTotalX);
-    let pixelY = Math.floor(this.thread.y+shiftTotalY);
-
-
-    let pixel = sourceimg[pixelY][pixelX];
-    let originalPixel = sourceimg[this.thread.y][this.thread.x];
-    let totalDisplace = Math.sqrt(shiftTotalX*shiftTotalX+shiftTotalY*shiftTotalY);
-    if(shiftTotalX<1.9 && shiftTotalX > 1.78){
-        this.color(pixel[0]+0.8, pixel[1]+0.6, pixel[2]+0.6, 1);
-        
-    } else {
-
-        this.color((pixel[0]), (pixel[1]), (pixel[2]), 1);
-        //this.color((pixel[0]+originalPixel[0])/2, (pixel[1]+originalPixel[1])/2, (pixel[2]+originalPixel[2])/2, 1);
-    }
-
-    //this.color(pixel[0]+Math.sqrt(shiftTotalX*shiftTotalX+shiftTotalY*shiftTotalY)/4, pixel[1], pixel[2], 1);
+    let pixelX = shiftTotalX;
+    let pixelY = shiftTotalY;
+    let packed = ((totalMag+256)&0xFFFF)<<16 | (pixelX&0xFF)<<8 | pixelY&0xFF;
+    return packed;
+},{
+    "dynamicArguments":true,
+    "pipeline":true,
+    "precision":"single",
+    "tactic":"speed"
+})
+.setOutput([512,512]).setPrecision('single')
+.setGraphical(false).setConstants({
+});
+let display = gpu.createKernel(function(sourceimg,displacement) {
     
+    let pixelPacked = Math.floor(displacement[this.thread.y][this.thread.x]);
+    let pixelY = pixelPacked & 0xFF;
+    let pixelX = (pixelPacked&0xFF00) >>8;
+    let totalMag = (pixelPacked >>16)-256;
+    //let pixelX = Math.floor(displacement[this.thread.y][this.thread.x][0]);
+    //let pixelY = Math.floor(displacement[this.thread.y][this.thread.x][1]);
+
+    
+
+    let pixel = sourceimg[pixelY+this.thread.y][pixelX+this.thread.x];
+    
+    this.color((Math.abs(pixelX))/25,(Math.abs(pixelY))/25,totalMag/160);
+        //this.color(pixel[0]+totalMag/230, (pixel[1])+totalMag/256, (pixel[2])+totalMag/160, 1);    
 },{
     "dynamicArguments":true,
     
 })
 .setOutput([512,512])
 .setGraphical(true).setConstants({
-    numSources: 0,
-    //waveSources:[[100,100,80,0.006,0],[200,230,169,0.008,0]]
-    waveSources:[[100,100,80,0.006,0],[200,230,169,0.008,0]]
 });
 
 
+let fishCanvas = new OffscreenCanvas(512,512);
+fishCanvas = document.getElementById("fishCanvas");
 
-//let sources = [[100,100,80,1,0,5000],[200,230,169,2,0,5000]];
+let fishContext = fishCanvas.getContext("2d"); 
+
+function drawFish(x,y,angle,curvature,segments){
+    fishContext.translate(x,y);
+    fishContext.rotate(angle);
+
+    let findex = {
+        start:3,
+        end:6
+    }
+
+    let currentX = 0;
+    let currentY = 0;
+    let pathPointsLeft = [];
+    let pathPointsRight = [];
+    let finPath = new Path2D();
+
+    for(let i = 0; i < segments.length;i++){
+        let currentAngle = ((curvature/segments.length)*i)-curvature/2;
+        let newCenter = getNextCoord(currentX,currentY,currentAngle,segments[i][1]);
+        //console.log(newCenter);
+        let sidewaysPoints = getSidewaysCoords(newCenter.x,newCenter.y,currentAngle,segments[i][0]);
+        pathPointsLeft.push([sidewaysPoints.x1,sidewaysPoints.y1]);
+        pathPointsRight.push([sidewaysPoints.x2,sidewaysPoints.y2]);
+        if(i>=findex.start&&i<findex.end){
+            finPath.lineTo(newCenter.x,newCenter.y);
+        }
+        currentX = newCenter.x;        
+        currentY = newCenter.y;
+
+        /*
+        fishContext.moveTo(segments[i],0);
+        fishContext.lineTo(segments[i],10);
+        fishContext.stroke();
+        fishContext.moveTo(-segments[i],0);
+        fishContext.lineTo(-segments[i],10);
+        fishContext.translate(0,10);
+        fishContext.stroke();
+        fishContext.rotate(currentAngle);
+        */
+    }
+    //console.log(pathPointsLeft,pathPointsRight);
+    //fishContext.beginPath();
+    //fishContext.moveTo(0,segments[0])
+    
+    let fishPath = new Path2D();
+    fishPath.moveTo(15,0);
+
+    for(let p of pathPointsLeft){
+        //fishContext.lineTo(p[0],p[1]);
+        fishPath.lineTo(p[0],p[1]);
+    }
+    //fishContext.moveTo(0,-segments[0]);
+    
+    pathPointsRight.reverse();
+    for(let p of pathPointsRight){
+        fishPath.lineTo(p[0],p[1]);
+        //fishContext.lineTo(p[0],p[1]);
+    }
+    //fishPath.moveTo(0,-segments[0]);
+    fishPath.closePath();
+    
+    fishContext.fillStyle="rgba(190,180,200)";
+    fishContext.lineWidth=4;
+    fishContext.strokeStyle="rgba(180,140,210)";
+    fishContext.fill(fishPath);
+    fishContext.stroke(finPath)
+    //fishContext.stroke();
+
+
+
+    fishContext.resetTransform();
+
+    function getSidewaysCoords(currentX,currentY,currentAngle,radius){
+        let x1 = currentX+Math.cos(currentAngle+Math.PI/2)*radius;
+        let x2 = currentX+Math.cos(currentAngle-Math.PI/2)*radius;
+        let y1 = currentY+Math.sin(currentAngle+Math.PI/2)*radius;
+        let y2 = currentY+Math.sin(currentAngle-Math.PI/2)*radius;
+        return {x1,x2,y1,y2};
+    }
+
+    function getNextCoord(startx,starty,curve,length){
+        let xdiff = Math.cos(curve)*length;
+        let ydiff = Math.sin(curve)*length;
+        return {x:startx+xdiff,y:starty+ydiff};
+
+    }
+}
+
+
+let fishCurve = 0;
+let fishRotate = 0;
+function drawFishAnimation(){
+    fishContext.clearRect(0,0,fishCanvas.width,fishCanvas.height);
+    drawFish(200,200,simulationTime/16,Math.sin(simulationTime/0.6), [[7,5],[12,18],[14,10],[15,10],[24,6],[22,4],[16,10],[17,10],[15,10],[10,18],[13,10]]);
+    
+
+}
+
+
+
 let sources = [];
 addWaveSource(100,100,125,5.7,5);
 function addWaveSource(x,y,mag,freq,lifetime){
@@ -126,10 +224,14 @@ function addWaveSource(x,y,mag,freq,lifetime){
 }
 evalMode=true;
 
+
+let tick = 0;
 document.getElementById("fishimage").addEventListener("load",async ()=>{
+    let displacements = await distort(simulationTime,(sources.flat()),sources.length); ;
 
     
     async function renderLoop(time){
+        tick++;
         simulationTime = time/500;
         //console.log(sources.flat());
         //let t = Date.now()/1000 % Math.pow(2,15);
@@ -140,18 +242,34 @@ document.getElementById("fishimage").addEventListener("load",async ()=>{
                 sources.splice(i,1);
             }
         }
+        if(sources.length>0){
 
-        let startTime = performance.now();
-        await render(document.getElementById("fishimage"),simulationTime,(sources.flat()),sources.length);
-        console.log("render time: ", performance.now()-startTime);
+            let startTime = performance.now();
+            //await render(document.getElementById("fishimage"),simulationTime,(sources.flat()),sources.length);
+            if(tick%2==0){
+                displacements = await distort(simulationTime,(sources.flat()),sources.length);         
+                
+            }
+            
+            await display(document.getElementById("fishimage"),displacements);
+            
+            
+            console.log("render time: ", performance.now()-startTime);
+            drawFishAnimation()
+        }
         requestAnimationFrame(renderLoop);
     }
     requestAnimationFrame(renderLoop);
 
 
 })
+setInterval(async ()=>{
+    ///displacements = await distort(simulationTime,(sources.flat()),sources.length);
 
-let renderCanvas = render.getCanvas();
+},16)
+
+
+let renderCanvas = display.getCanvas();
 let isClicked = false;
 let moveCounter = 0;
 
@@ -205,7 +323,7 @@ setInterval(()=>{
 
 
 
-document.getElementsByTagName('body')[0].appendChild(render.getCanvas());
+//document.getElementsByTagName('body')[0].appendChild(renderCanvas);
 
 
 
