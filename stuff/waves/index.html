@@ -80,7 +80,7 @@ let distort = gpu.createKernel(function(time,waveSources,numSources) {
 .setOutput([512,512]).setPrecision('single')
 .setGraphical(false).setConstants({
 });
-let display = gpu.createKernel(function(sourceimg,displacement) {
+let display = gpu.createKernel(function(sourceimg,displacement,time) {
     
     let pixelPacked = Math.floor(displacement[this.thread.y][this.thread.x]);
     let pixelY = pixelPacked & 0xFF;
@@ -93,8 +93,20 @@ let display = gpu.createKernel(function(sourceimg,displacement) {
 
     let pixel = sourceimg[pixelY+this.thread.y][pixelX+this.thread.x];
     
-    this.color((Math.abs(pixelX))/25,(Math.abs(pixelY))/25,totalMag/160);
-        //this.color(pixel[0]+totalMag/230, (pixel[1])+totalMag/256, (pixel[2])+totalMag/160, 1);    
+    if(pixel[3]==0){
+        if(Math.floor(Math.floor((this.thread.x+pixelX+Math.random()*7)/25)+Math.floor((this.thread.y+pixelY+Math.random()*5)/25))%2==0){
+        pixel = [0.8,0,1,0];
+        }
+    }
+
+    
+    if(pixel[3]==1&&(pixel[1]*0.1>(Math.sin(this.thread.x*Math.cos(this.thread.y)*2)))){
+        this.color(Math.random()*Math.sin(this.thread.y+this.thread.x),Math.random(),Math.random(),0)
+    } else {
+        this.color(pixel[0]+totalMag/230, (pixel[1])+totalMag/256, (pixel[2])+totalMag/160, 1);    
+
+    }
+    //this.color((Math.abs(pixelX))/25,(Math.abs(pixelY))/25,totalMag/160);
 },{
     "dynamicArguments":true,
     
@@ -105,7 +117,7 @@ let display = gpu.createKernel(function(sourceimg,displacement) {
 
 
 let fishCanvas = new OffscreenCanvas(512,512);
-fishCanvas = document.getElementById("fishCanvas");
+//fishCanvas = document.getElementById("fishCanvas");
 
 let fishContext = fishCanvas.getContext("2d"); 
 
@@ -200,15 +212,52 @@ function drawFish(x,y,angle,curvature,segments){
     }
 }
 
+class Fish {
+    constructor(x,y,angle,shape){
+        this.x=x;
+        this.y=y;
+        this.r = Math.hypot(x,y);
+        this.angle=angle;
+        this.shape=shape;
+        this.phase=Math.random()*Math.PI;
+        this.speed = 1 + (Math.random()-0.5)*0.5
+    }
+    render(){
+
+        this.x = Math.cos((simulationTime*this.speed)/9)*this.r + 256;
+        this.y = Math.sin((simulationTime*this.speed)/9)*this.r + 256;
+        this.angle = (simulationTime*this.speed)/9-Math.PI/2;
+
+
+        drawFish(this.x,this.y,this.angle,Math.sin(simulationTime/0.6+this.phase)*0.8, this.shape);
+    }
+    randomShape(segments,maxwidth,maxlength){
+        let shape = [];
+        for(let i = 0; i < segments; i++){
+            shape.push([Math.random()*maxwidth,Math.random()*maxlength]);
+        }
+        this.shape=shape;
+
+        return this;
+    }
+}
 
 let fishCurve = 0;
 let fishRotate = 0;
+let fishlist = [];
+fishlist.push(new Fish(125,120,0,[[7,8],[12,14],[14,10],[20,2],[24,3],[22,2],[15,10],[16,10],[17,10],[15,10],[10,18],[12,10],[7,4],[1,4]]));
+fishlist.push(new Fish(80,80,0,[]).randomShape(10,20,20));
+fishlist.push(new Fish(50,50,0,[]).randomShape(10,20,20));
+fishlist.push(new Fish(150,180,0,[]).randomShape(10,20,20));
+
+
 function drawFishAnimation(){
     fishContext.clearRect(0,0,fishCanvas.width,fishCanvas.height);
-    drawFish(200,200,simulationTime/16,Math.sin(simulationTime/0.6), [[7,8],[12,14],[14,10],[20,2],[24,3],[22,2],[15,10],[16,10],[17,10],[15,10],[10,18],[12,10],[7,4],[1,4]]);
-    
-
+    for(let fish of fishlist){
+        fish.render();
+    }
 }
+
 
 
 
@@ -249,13 +298,13 @@ document.getElementById("fishimage").addEventListener("load",async ()=>{
         if(sources.length>0){
 
             let startTime = performance.now();
-            //await render(document.getElementById("fishimage"),simulationTime,(sources.flat()),sources.length);
             if(tick%2==0){
                 displacements = await distort(simulationTime,(sources.flat()),sources.length);         
                 
             }
             
-            await display(document.getElementById("fishimage"),displacements);
+            //await display(document.getElementById("fishimage"),displacements);
+            await display(fishCanvas,displacements,simulationTime);
             
             
             console.log("render time: ", performance.now()-startTime);
@@ -327,7 +376,7 @@ setInterval(()=>{
 
 
 
-//document.getElementsByTagName('body')[0].appendChild(renderCanvas);
+document.getElementsByTagName('body')[0].appendChild(renderCanvas);
 
 
 
