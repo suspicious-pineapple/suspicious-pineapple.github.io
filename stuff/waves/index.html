@@ -3,7 +3,7 @@
 
 <head>
     <script src="https://unpkg.com/gpu.js@latest/dist/gpu-browser.min.js"></script>
-    <image src="./fih.jpg" style="display: none;" id="fishimage"></image>
+    <image src="./brocc.jpg" style="display: none;" id="fishimage"></image>
     <image src="./single_fish.png" style="display: none;" id="fishtexture"></image>
 </head>
 
@@ -80,7 +80,7 @@ let distort = gpu.createKernel(function(time,waveSources,numSources) {
 .setOutput([512,512]).setPrecision('single')
 .setGraphical(false).setConstants({
 });
-let display = gpu.createKernel(function(sourceimg,displacement,time) {
+let display = gpu.createKernel(function(sourceimg,background,displacement,fishData,numFish,time) {
     
     let pixelPacked = Math.floor(displacement[this.thread.y][this.thread.x]);
     let pixelY = pixelPacked & 0xFF;
@@ -89,23 +89,45 @@ let display = gpu.createKernel(function(sourceimg,displacement,time) {
     //let pixelX = Math.floor(displacement[this.thread.y][this.thread.x][0]);
     //let pixelY = Math.floor(displacement[this.thread.y][this.thread.x][1]);
 
-    
+    let readX = pixelX+this.thread.x;
+    let readY = pixelY+this.thread.y;
 
-    let pixel = sourceimg[pixelY+this.thread.y][pixelX+this.thread.x];
+    let pixel = sourceimg[readY+Math.floor(Math.random()*2+Math.sin(this.thread.x)*Math.cos(time))][readX+Math.floor(Math.random()*2+Math.sin(this.thread.y)*0.5)];
     
-    if(pixel[3]==0){
-        if(Math.floor(Math.floor((this.thread.x+pixelX+Math.random()*7)/25)+Math.floor((this.thread.y+pixelY+Math.random()*5)/25))%2==0){
-        pixel = [0.8,0,1,0];
+    if(pixel[3]!=1){
+        
+        pixel = background[pixelY+this.thread.y][pixelX+this.thread.x];
+        
+        //if(Math.floor(Math.floor((this.thread.x+pixelX+Math.random()*7)/25)+Math.floor((this.thread.y+pixelY+Math.random()*5)/25))%2==0){
+        //pixel = [0.8,0,1,0];
+        //}
+    } else {
+        let fishIndex = (Math.floor(pixel[0]*256));
+        let fishx= fishData[fishIndex];        
+        let fishy = fishData[fishIndex+1];        
+        //let fishx = 0;
+        let xdist = readX-fishx;
+        let ydist = readY-fishy;
+        let dist = Math.sqrt(xdist*xdist+ydist*ydist);
+        if(fishIndex==Math.floor((time))%12){
+            pixel = [1,1,0.6,1];
+
         }
+
+
+
+
+
+
     }
 
     
-    if(pixel[3]==1&&(pixel[1]*0.1>(Math.sin(this.thread.x*Math.cos(this.thread.y)*2)))){
-        this.color(Math.random()*Math.sin(this.thread.y+this.thread.x),Math.random(),Math.random(),0)
-    } else {
+    //if(pixel[3]==1&&(pixel[1]*0.1>(Math.sin(this.thread.x*Math.cos(this.thread.y)*2)))){
+    //    this.color(Math.random()*Math.sin(this.thread.y+this.thread.x),Math.random(),Math.random(),0)
+    //} else {
         this.color(pixel[0]+totalMag/230, (pixel[1])+totalMag/256, (pixel[2])+totalMag/160, 1);    
 
-    }
+    //}
     //this.color((Math.abs(pixelX))/25,(Math.abs(pixelY))/25,totalMag/160);
 },{
     "dynamicArguments":true,
@@ -121,7 +143,7 @@ let fishCanvas = new OffscreenCanvas(512,512);
 
 let fishContext = fishCanvas.getContext("2d"); 
 
-function drawFish(x,y,angle,curvature,segments){
+function drawFish(x,y,angle,curvature,segments,redchannel=190){
     fishContext.translate(x,y);
     fishContext.rotate(angle);
 
@@ -172,9 +194,9 @@ function drawFish(x,y,angle,curvature,segments){
     //fishPath.moveTo(0,-segments[0]);
     fishPath.closePath();
     
-    fishContext.fillStyle="rgba(190,180,200)";
+    fishContext.fillStyle="rgba("+redchannel+",180,200,256)";
     fishContext.lineWidth=4;
-    fishContext.strokeStyle="rgba(180,140,210)";
+    fishContext.strokeStyle="rgba(180,140,210,256)";
     fishContext.fill(fishPath);
     fishContext.stroke(finPath)
     
@@ -211,9 +233,9 @@ function drawFish(x,y,angle,curvature,segments){
 
     }
 }
-
+let numFish = 0;
 class Fish {
-    constructor(x,y,angle,shape){
+    constructor(x,y,angle,shape=[[7,8],[12,14],[14,10],[20,2],[24,3],[22,2],[15,10],[16,10],[17,10],[15,10],[10,18],[12,10],[7,4],[1,4]]){
         this.x=x;
         this.y=y;
         this.r = Math.hypot(x,y);
@@ -221,15 +243,19 @@ class Fish {
         this.shape=shape;
         this.phase=Math.random()*Math.PI;
         this.speed = 1 + (Math.random()-0.5)*0.5
+        this.fishIndex = numFish;
+        numFish++;
+        numFish++;
     }
     render(){
 
         this.x = Math.cos((simulationTime*this.speed)/9)*this.r + 256;
         this.y = Math.sin((simulationTime*this.speed)/9)*this.r + 256;
         this.angle = (simulationTime*this.speed)/9-Math.PI/2;
+        this.curve = Math.sin(simulationTime/0.6+this.phase)*0.8
 
 
-        drawFish(this.x,this.y,this.angle,Math.sin(simulationTime/0.6+this.phase)*0.8, this.shape);
+        drawFish(this.x,this.y,this.angle,this.curve, this.shape, this.fishIndex);
     }
     randomShape(segments,maxwidth,maxlength){
         let shape = [];
@@ -240,15 +266,26 @@ class Fish {
 
         return this;
     }
+    serialize(){
+        let data = [];
+        data.push(this.y);
+        data.push(this.x);
+        data.push(this.angle);
+        return data;
+    }
+
 }
 
 let fishCurve = 0;
 let fishRotate = 0;
 let fishlist = [];
-fishlist.push(new Fish(125,120,0,[[7,8],[12,14],[14,10],[20,2],[24,3],[22,2],[15,10],[16,10],[17,10],[15,10],[10,18],[12,10],[7,4],[1,4]]));
-fishlist.push(new Fish(80,80,0,[]).randomShape(10,20,20));
-fishlist.push(new Fish(50,50,0,[]).randomShape(10,20,20));
-fishlist.push(new Fish(150,180,0,[]).randomShape(10,20,20));
+fishlist.push(new Fish(125,120,0));
+//fishlist.push(new Fish(80,80,0,[]).randomShape(10,20,20));
+fishlist.push(new Fish(80,80,0,));
+//fishlist.push(new Fish(50,50,0,[]).randomShape(10,20,20));
+fishlist.push(new Fish(50,50,0,));
+//fishlist.push(new Fish(150,180,0,[]).randomShape(10,20,20));
+fishlist.push(new Fish(150,180,0));
 
 
 function drawFishAnimation(){
@@ -304,10 +341,12 @@ document.getElementById("fishimage").addEventListener("load",async ()=>{
             }
             
             //await display(document.getElementById("fishimage"),displacements);
-            await display(fishCanvas,displacements,simulationTime);
+            let fishData = fishlist.map((f)=>f.serialize());
+            console.log(fishData.flat());
+            await display(fishCanvas,document.getElementById("fishimage"),displacements,fishData.flat(),fishlist.length,simulationTime);
             
             
-            console.log("render time: ", performance.now()-startTime);
+            console.log("render time: ", performance.now()-startTime, "sources ",sources.length);
             drawFishAnimation()
         }
         requestAnimationFrame(renderLoop);
