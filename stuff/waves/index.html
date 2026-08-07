@@ -3,7 +3,7 @@
 
 <head>
     <script src="https://unpkg.com/gpu.js@latest/dist/gpu-browser.min.js"></script>
-    <image src="./brocc.jpg" style="display: none;" id="fishimage"></image>
+    <image src="./fih.jpg" style="display: none;" id="fishimage"></image>
     <image src="./single_fish.png" style="display: none;" id="fishtexture"></image>
 </head>
 
@@ -92,28 +92,82 @@ let display = gpu.createKernel(function(sourceimg,background,displacement,fishDa
     let readX = pixelX+this.thread.x;
     let readY = pixelY+this.thread.y;
 
-    let pixel = sourceimg[readY+Math.floor(Math.random()*2+Math.sin(this.thread.x)*Math.cos(time))][readX+Math.floor(Math.random()*2+Math.sin(this.thread.y)*0.5)];
+    //let pixel = sourceimg[readY+Math.floor(Math.random()*2+Math.sin(this.thread.x)*Math.cos(time))][readX+Math.floor(Math.random()*2+Math.sin(this.thread.y)*0.5)];
+    let pixel = sourceimg[readY][readX];
     
     if(pixel[3]!=1){
         
-        pixel = background[pixelY+this.thread.y][pixelX+this.thread.x];
         
+        //pixel = background[pixelY+this.thread.y][pixelX+this.thread.x];
+        pixel = background[readY][readX];
         //if(Math.floor(Math.floor((this.thread.x+pixelX+Math.random()*7)/25)+Math.floor((this.thread.y+pixelY+Math.random()*5)/25))%2==0){
         //pixel = [0.8,0,1,0];
         //}
     } else {
-        let fishIndex = (Math.floor(pixel[0]*256));
-        let fishx= fishData[fishIndex];        
-        let fishy = fishData[fishIndex+1];        
-        //let fishx = 0;
-        let xdist = readX-fishx;
-        let ydist = readY-fishy;
-        let dist = Math.sqrt(xdist*xdist+ydist*ydist);
-        if(fishIndex==Math.floor((time))%12){
-            pixel = [1,1,0.6,1];
+        if(pixel[1]==1){
 
+            
+            let fishIndex = (Math.floor(pixel[0]*256));
+            //fishIndex=2;
+            let fishy = 512-fishData[fishIndex*18];        
+            let fishx = fishData[fishIndex*18+1];        
+            let fishangle = fishData[fishIndex*18+2];
+            let fishCurve = fishData[fishIndex*18+3];
+            let curvePerSegment = fishCurve/14;
+            
+            let displaceAngle = -fishCurve/2;
+            let displaceLength = 0;
+            let displaceX = 0;
+            let displaceY = 0;
+
+            let fishRelX = (fishx-readX);
+            let fishRelY = (fishy-readY);
+            
+            let fishRotX = -(fishRelX * Math.cos(fishangle) - fishRelY*Math.sin(fishangle));
+            let fishRotY = fishRelX * Math.sin(fishangle) + fishRelY*Math.cos(fishangle);
+            
+            
+
+            for(let i = 0; i < 14; i++){
+                displaceLength+=fishData[fishIndex*18+4+i];
+                if(displaceLength>Math.sqrt(fishRotX*fishRotX+fishRotY*fishRotY)){
+                    let diff = displaceLength-fishRotX;
+
+                displaceX += Math.cos(-fishCurve/2+((fishCurve/14)*i))*(fishData[fishIndex*18+4+i]-diff);
+                displaceY += Math.sin(-fishCurve/2+((fishCurve/14)*i))*(fishData[fishIndex*18+4+i]-diff);
+
+
+
+                    break;
+                }
+                displaceAngle+=fishCurve/14;
+                displaceX += Math.cos(-fishCurve/2+((fishCurve/14)*i))*fishData[fishIndex*18+4+i];
+                displaceY += Math.sin(-fishCurve/2+((fishCurve/14)*i))*fishData[fishIndex*18+4+i];
+            }
+                        
+
+            
+            //let fishx = 0;
+            
+            
+            let addX = Math.cos(-displaceAngle-fishangle)*displaceLength;
+            let addY = Math.sin(-displaceAngle-fishangle)*displaceLength;
+
+            let xdist = (fishx-readX)+addX;
+            let ydist = (fishy-readY)+addY;
+            let dist = Math.sqrt(xdist*xdist+ydist*ydist);
+            
+
+            let fishTextureX = fishRotY-displaceY;
+            
+            //if(fishIndex==Math.floor((time))%12){
+                //if(dist<25){
+
+                    pixel = [1-(Math.abs(fishRotY-displaceY)%15)/15,0.9-(Math.abs(fishRotY-displaceY)%15)/15,0.7,1];
+                    
+                //}
+                
         }
-
 
 
 
@@ -131,7 +185,8 @@ let display = gpu.createKernel(function(sourceimg,background,displacement,fishDa
     //this.color((Math.abs(pixelX))/25,(Math.abs(pixelY))/25,totalMag/160);
 },{
     "dynamicArguments":true,
-    
+    "tactic":"precision"
+
 })
 .setOutput([512,512])
 .setGraphical(true).setConstants({
@@ -143,7 +198,7 @@ let fishCanvas = new OffscreenCanvas(512,512);
 
 let fishContext = fishCanvas.getContext("2d"); 
 
-function drawFish(x,y,angle,curvature,segments,redchannel=190){
+function drawFish(x,y,angle,curvature,segments,redchannel=4){
     fishContext.translate(x,y);
     fishContext.rotate(angle);
 
@@ -194,16 +249,16 @@ function drawFish(x,y,angle,curvature,segments,redchannel=190){
     //fishPath.moveTo(0,-segments[0]);
     fishPath.closePath();
     
-    fishContext.fillStyle="rgba("+redchannel+",180,200,256)";
+    fishContext.fillStyle="rgba("+redchannel+",256,200,256)";
+    fishContext.fill(fishPath);
     fishContext.lineWidth=4;
     fishContext.strokeStyle="rgba(180,140,210,256)";
-    fishContext.fill(fishPath);
     fishContext.stroke(finPath)
     
     let eyeSeg = getNextCoord(0,0,(curvature/segments.length)*8,14);
     let eyePoints = getSidewaysCoords(eyeSeg.x,eyeSeg.y,(curvature/segments.length)*7,5);
     
-    fishContext.strokeStyle="rgba(70,169,210)";
+    fishContext.strokeStyle="rgba(256,169,190,256)";
     fishContext.beginPath();
     fishContext.arc(eyePoints.x1,-eyePoints.y1,0.5,0,Math.PI*2);
     fishContext.stroke();
@@ -245,7 +300,6 @@ class Fish {
         this.speed = 1 + (Math.random()-0.5)*0.5
         this.fishIndex = numFish;
         numFish++;
-        numFish++;
     }
     render(){
 
@@ -271,6 +325,11 @@ class Fish {
         data.push(this.y);
         data.push(this.x);
         data.push(this.angle);
+        data.push(this.curve);
+        for(let i = 0; i < this.shape.length;i++){
+            data.push(this.shape[i][1]);
+        }
+
         return data;
     }
 
@@ -279,13 +338,13 @@ class Fish {
 let fishCurve = 0;
 let fishRotate = 0;
 let fishlist = [];
-fishlist.push(new Fish(125,120,0));
-//fishlist.push(new Fish(80,80,0,[]).randomShape(10,20,20));
-fishlist.push(new Fish(80,80,0,));
-//fishlist.push(new Fish(50,50,0,[]).randomShape(10,20,20));
 fishlist.push(new Fish(50,50,0,));
-//fishlist.push(new Fish(150,180,0,[]).randomShape(10,20,20));
+fishlist.push(new Fish(80,80,0,));
+fishlist.push(new Fish(125,120,0));
 fishlist.push(new Fish(150,180,0));
+//fishlist.push(new Fish(80,80,0,[]).randomShape(10,20,20));
+//fishlist.push(new Fish(50,50,0,[]).randomShape(10,20,20));
+//fishlist.push(new Fish(150,180,0,[]).randomShape(10,20,20));
 
 
 function drawFishAnimation(){
@@ -391,7 +450,7 @@ renderCanvas.addEventListener("mousemove",(e)=>{
     
     if(isClicked){
         if(moveCounter%2==0){
-            addWaveSource(pos.x,renderCanvas.height-pos.y,document.getElementById("waveStrengthInput").value,document.getElementById("waveFreqInput").value,0.05);
+            addWaveSource(pos.x,renderCanvas.height-pos.y,document.getElementById("waveStrengthInput").value,document.getElementById("waveFreqInput").value,1.05);
         }
         moveCounter++;
         
