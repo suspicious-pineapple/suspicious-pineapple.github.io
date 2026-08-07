@@ -4,7 +4,7 @@
 <head>
     <script src="https://unpkg.com/gpu.js@latest/dist/gpu-browser.min.js"></script>
     <image src="./fih.jpg" style="display: none;" id="fishimage"></image>
-    <image src="./single_fish.png" style="display: none;" id="fishtexture"></image>
+    <image src="./fishtex.bmp" style="display: none;" id="fishtexture"></image>
 </head>
 
 <body>
@@ -80,7 +80,7 @@ let distort = gpu.createKernel(function(time,waveSources,numSources) {
 .setOutput([512,512]).setPrecision('single')
 .setGraphical(false).setConstants({
 });
-let display = gpu.createKernel(function(sourceimg,background,displacement,fishData,numFish,time) {
+let display = gpu.createKernel(function(sourceimg,background,fishtex,displacement,fishData,numFish,time) {
     
     let pixelPacked = Math.floor(displacement[this.thread.y][this.thread.x]);
     let pixelY = pixelPacked & 0xFF;
@@ -130,7 +130,8 @@ let display = gpu.createKernel(function(sourceimg,background,displacement,fishDa
 
             for(let i = 0; i < 14; i++){
                 displaceLength+=fishData[fishIndex*18+4+i];
-                if(displaceLength>Math.sqrt(fishRotX*fishRotX+fishRotY*fishRotY)){
+                if(displaceLength>=Math.sqrt(fishRotX*fishRotX+fishRotY*fishRotY)){
+                //if(displaceLength>fishRotX){
                     let diff = displaceLength-fishRotX;
 
                 displaceX += Math.cos(-fishCurve/2+((fishCurve/14)*i))*(fishData[fishIndex*18+4+i]-diff);
@@ -158,12 +159,16 @@ let display = gpu.createKernel(function(sourceimg,background,displacement,fishDa
             let dist = Math.sqrt(xdist*xdist+ydist*ydist);
             
 
+            let fishTextureY = fishRotX;
             let fishTextureX = fishRotY-displaceY;
-            
+
+            //pixel = fishtex[fishTextureY*2][(fishTextureX+32)*2];
+            pixel = fishtex[fishRotX*2][(fishRotY+32)*2];
+
             //if(fishIndex==Math.floor((time))%12){
                 //if(dist<25){
 
-                    pixel = [1-(Math.abs(fishRotY-displaceY)%15)/15,0.9-(Math.abs(fishRotY-displaceY)%15)/15,0.7,1];
+                    //pixel = [1-(Math.abs(fishRotX-displaceX)%15)/15,0.9-(Math.abs(fishRotX-displaceX)%15)/15,0.7,1];
                     
                 //}
                 
@@ -306,7 +311,7 @@ class Fish {
         this.x = Math.cos((simulationTime*this.speed)/9)*this.r + 256;
         this.y = Math.sin((simulationTime*this.speed)/9)*this.r + 256;
         this.angle = (simulationTime*this.speed)/9-Math.PI/2;
-        this.curve = Math.sin(simulationTime/0.6+this.phase)*0.8
+        this.curve = Math.sin(simulationTime/0.4+this.phase);
 
 
         drawFish(this.x,this.y,this.angle,this.curve, this.shape, this.fishIndex);
@@ -402,7 +407,7 @@ document.getElementById("fishimage").addEventListener("load",async ()=>{
             //await display(document.getElementById("fishimage"),displacements);
             let fishData = fishlist.map((f)=>f.serialize());
             console.log(fishData.flat());
-            await display(fishCanvas,document.getElementById("fishimage"),displacements,fishData.flat(),fishlist.length,simulationTime);
+            await display(fishCanvas,document.getElementById("fishimage"),document.getElementById("fishtexture"),displacements,fishData.flat(),fishlist.length,simulationTime);
             
             
             console.log("render time: ", performance.now()-startTime, "sources ",sources.length);
